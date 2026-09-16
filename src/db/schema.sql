@@ -23,7 +23,8 @@ ALTER TABLE projects ADD COLUMN IF NOT EXISTS status_name TEXT;
 CREATE INDEX IF NOT EXISTS idx_projects_status_name ON projects(status_name);
 
 CREATE TABLE IF NOT EXISTS documents (
-  nr                TEXT PRIMARY KEY,            -- Hero customer_document nr
+  id                BIGINT PRIMARY KEY,          -- Hero customer_document id (nr ist NICHT eindeutig: viele Entwuerfe/geloeschte Dokumente haben nr = '')
+  nr                TEXT,                        -- Belegnummer, kann leer sein
   type              TEXT,                        -- offer | invoice | information | ...
   status_code       TEXT,
   status_name       TEXT,
@@ -50,9 +51,11 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS booking_status_name TEXT;
 CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_match_id);
 CREATE INDEX IF NOT EXISTS idx_documents_type_date ON documents(type, date);
 CREATE INDEX IF NOT EXISTS idx_documents_booking_open ON documents(booking_is_open) WHERE booking_is_open;
+CREATE INDEX IF NOT EXISTS idx_documents_nr ON documents(nr) WHERE nr IS NOT NULL AND nr != '';
 
 CREATE TABLE IF NOT EXISTS document_drafts (
   id                BIGINT PRIMARY KEY,          -- published_customer_document_draft.id
+  document_id       BIGINT,                      -- Hero customer_document id (siehe documents.id)
   document_nr       TEXT,
   project_match_id  BIGINT,
   name              TEXT,
@@ -62,6 +65,7 @@ CREATE TABLE IF NOT EXISTS document_drafts (
   synced_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   raw_json          JSONB NOT NULL
 );
+ALTER TABLE document_drafts ADD COLUMN IF NOT EXISTS document_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_document_drafts_project ON document_drafts(project_match_id);
 CREATE INDEX IF NOT EXISTS idx_document_drafts_project_type ON document_drafts(project_match_id, type);
 

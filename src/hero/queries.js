@@ -28,6 +28,7 @@ export const PROJECT_MATCHES_QUERY = (first, offset) => `{
 
 export const CUSTOMER_DOCUMENTS_QUERY = (first, offset) => `{
   customer_documents(first: ${first}, offset: ${offset}) {
+    id
     nr
     type
     status_code

@@ -18,12 +18,13 @@ export async function syncDocuments() {
 
     await dbQuery(
       `INSERT INTO documents (
-         nr, type, status_code, status_name, date, value, vat, project_match_id,
+         id, nr, type, status_code, status_name, date, value, vat, project_match_id,
          booking_is_open, booking_due_date, booking_paid_date, booking_balance, booking_status_name,
          synced_at, raw_json
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now(), $14)
-       ON CONFLICT (nr) DO UPDATE SET
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now(), $15)
+       ON CONFLICT (id) DO UPDATE SET
+         nr = EXCLUDED.nr,
          type = EXCLUDED.type,
          status_code = EXCLUDED.status_code,
          status_name = EXCLUDED.status_name,
@@ -39,7 +40,7 @@ export async function syncDocuments() {
          synced_at = now(),
          raw_json = EXCLUDED.raw_json`,
       [
-        d.nr, d.type, d.status_code, d.status_name, d.date, d.value, d.vat, projectMatchId,
+        d.id, d.nr, d.type, d.status_code, d.status_name, d.date, d.value, d.vat, projectMatchId,
         booking?.is_open ?? null, booking?.due_date ?? null, booking?.paid_date ?? null,
         booking?.balance ?? null, booking?.status_name ?? null,
         safeJsonStringify(d),
@@ -49,9 +50,10 @@ export async function syncDocuments() {
     const draft = d.published_customer_document_draft;
     if (draft) {
       await dbQuery(
-        `INSERT INTO document_drafts (id, document_nr, project_match_id, name, type, data, synced_at, raw_json)
-         VALUES ($1, $2, $3, $4, $5, $6, now(), $7)
+        `INSERT INTO document_drafts (id, document_id, document_nr, project_match_id, name, type, data, synced_at, raw_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now(), $8)
          ON CONFLICT (id) DO UPDATE SET
+           document_id = EXCLUDED.document_id,
            document_nr = EXCLUDED.document_nr,
            project_match_id = EXCLUDED.project_match_id,
            name = EXCLUDED.name,
@@ -59,7 +61,7 @@ export async function syncDocuments() {
            data = EXCLUDED.data,
            synced_at = now(),
            raw_json = EXCLUDED.raw_json`,
-        [draft.id, d.nr, projectMatchId, draft.name, draft.type, safeJsonStringify(draft.data ?? null), safeJsonStringify(draft)]
+        [draft.id, d.id, d.nr, projectMatchId, draft.name, draft.type, safeJsonStringify(draft.data ?? null), safeJsonStringify(draft)]
       );
       draftCount += 1;
     }
