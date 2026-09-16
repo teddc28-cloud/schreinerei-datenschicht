@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Einstellungen — Betriebsdashboard</title>
+<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Einstellungen</h1>
+    <a href="/" class="settings-link">← Zurück zum Dashboard</a>
+  </header>
+
+  <main class="settings-main">
+    <section class="tile">
+      <h2>Kontostand</h2>
+      <p class="footnote">Startwert der Liquiditätsvorschau — manuell gepflegt, da keine Bankanbindung besteht.</p>
+      <form id="kontostand-form" class="inline-form">
+        <input type="number" step="0.01" name="kontostand" id="kontostand-input" />
+        <button type="submit">Speichern</button>
+        <span id="kontostand-saved" class="saved-hint" hidden>Gespeichert.</span>
+      </form>
+    </section>
+
+    <section class="tile">
+      <h2>Weitere Parameter</h2>
+      <p class="footnote">Stundensätze, Ampel-Schwelle, Sync-Warnschwelle usw. — wirken sofort auf alle Kacheln, ohne Code-Änderung.</p>
+      <table class="fixed-costs-table" id="parameter-table">
+        <thead>
+          <tr><th>Parameter</th><th>Wert</th><th>Bedeutung</th><th></th></tr>
+        </thead>
+        <tbody id="parameter-body"></tbody>
+      </table>
+    </section>
+
+    <section class="tile">
+      <h2>Fixkosten</h2>
+      <p class="footnote">Löhne, Miete, Leasing, Versicherungen, Darlehensraten, USt-Vorauszahlung — je einmal im Monat am angegebenen Tag.</p>
+      <table class="fixed-costs-table" id="fixed-costs-table">
+        <thead>
+          <tr><th>Bezeichnung</th><th>Betrag (€)</th><th>Tag im Monat</th><th>Aktiv</th><th></th></tr>
+        </thead>
+        <tbody id="fixed-costs-body"></tbody>
+      </table>
+
+      <form id="add-form" class="inline-form">
+        <input type="text" name="bezeichnung" placeholder="Bezeichnung" required />
+        <input type="number" step="0.01" name="betrag" placeholder="Betrag" required />
+        <input type="number" min="1" max="31" name="tag_im_monat" placeholder="Tag" required />
+        <button type="submit">Hinzufügen</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/assets/settings.js"></script>
+</body>
+</html>

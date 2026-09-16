@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Login — Betriebsdashboard</title>
+<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body class="login-body">
+  <form id="login-form" class="login-card">
+    <h1>Betriebsdashboard</h1>
+    <label>Benutzername<input type="text" name="username" autocomplete="username" required /></label>
+    <label>Passwort<input type="password" name="password" autocomplete="current-password" required /></label>
+    <button type="submit">Anmelden</button>
+    <p id="login-error" class="error" hidden>Benutzername oder Passwort falsch.</p>
+  </form>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = new FormData(e.target);
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: form.get('username'), password: form.get('password') }),
+      });
+      if (res.ok) {
+        window.location.href = '/';
+      } else {
+        document.getElementById('login-error').hidden = false;
+      }
+    });
+  </script>
+</body>
+</html>

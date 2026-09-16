@@ -1,0 +1,25 @@
+{
+  "name": "datenschicht",
+  "version": "0.1.0",
+  "description": "Zentrale Datenschicht + Betriebsdashboard fuer Schreinerei Scherer e.K.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "migrate": "node src/db/migrate.js",
+    "sync": "node src/sync/index.js",
+    "cron": "node src/cron.js",
+    "dev": "node --watch --watch-path=src src/server/index.js",
+    "prestart": "node src/db/migrate.js",
+    "start": "node src/server/index.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "pg": "^8.13.1"
+  }
+}
