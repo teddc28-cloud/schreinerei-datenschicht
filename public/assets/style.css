@@ -1,42 +1,59 @@
 :root {
-  --bg: #f5f6f8;
+  --bg: #f4f5f2;
   --card-bg: #ffffff;
-  --text: #1a1d23;
-  --muted: #6b7280;
-  --border: #e2e5ea;
+  --text: #232922;
+  --muted: #6b7268;
+  --border: #e1e3dc;
   --green: #1a7f37;
-  --red: #c0362c;
-  --accent: #2454a8;
+  --red: #b3261e;
+  --brand: #49584e;        /* forest green */
+  --brand-dark: #324137;   /* dark forest green */
+  --brand-yellow: #e6bf0d; /* sunshine yellow */
+  --accent: var(--brand);
+  --font-display: 'Unbounded', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-body: 'Manrope', -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
 
 * { box-sizing: border-box; }
+
+button { font-family: var(--font-body); }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-family: var(--font-body);
 }
 
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  background: var(--brand);
+  color: #ffffff;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.topbar h1 { font-size: 1.2rem; margin: 0; }
+.topbar-brand { display: flex; align-items: center; gap: 12px; }
+.topbar-brand img { height: 28px; width: auto; display: block; }
 
-.sync-status { font-size: 0.85rem; color: var(--muted); }
-.sync-status.red { color: var(--red); font-weight: 600; }
+.topbar h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.1rem;
+  margin: 0;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.sync-status { font-size: 0.85rem; color: rgba(255, 255, 255, 0.78); }
+.sync-status.red { color: var(--brand-yellow); font-weight: 700; }
 
 .topbar-right { display: flex; align-items: center; gap: 16px; }
-.settings-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
-.settings-link:hover { text-decoration: underline; }
+.settings-link { color: #ffffff; text-decoration: none; font-size: 0.85rem; opacity: 0.9; }
+.settings-link:hover { text-decoration: underline; opacity: 1; }
 
 .settings-main {
   max-width: 700px;
@@ -57,8 +74,10 @@ body {
   background: var(--accent);
   color: white;
   cursor: pointer;
+  font-weight: 700;
   font-size: 0.9rem;
 }
+.inline-form button:hover { background: var(--brand-dark); }
 .saved-hint { color: var(--green); font-size: 0.85rem; }
 
 .fixed-costs-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85rem; }
@@ -71,10 +90,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--card-bg);
+  color: var(--brand);
   cursor: pointer;
   font-size: 0.78rem;
+  font-weight: 600;
   margin-right: 4px;
 }
+.fixed-costs-table button:hover { background: var(--bg); }
 
 .tiles {
   display: grid;
@@ -88,20 +110,25 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 18px;
+  border-top: 3px solid var(--brand);
 }
 
 .tile h2 {
   margin: 0 0 10px;
-  font-size: 0.9rem;
-  color: var(--muted);
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 0.82rem;
+  color: var(--brand);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .tile .value {
-  font-size: 2rem;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 1.9rem;
+  font-weight: 900;
   margin: 0;
+  color: var(--brand-dark);
 }
 
 .tile .compare {
@@ -163,30 +190,49 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  background: var(--bg);
 }
 
 .login-card {
   background: var(--card-bg);
   border: 1px solid var(--border);
+  border-top: 4px solid var(--brand);
   border-radius: 10px;
   padding: 32px;
   width: min(340px, 90vw);
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 14px;
 }
 
-.login-card label { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
+.login-logo { height: 64px; width: auto; margin-bottom: 4px; }
+
+.login-card h1 {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.login-card label { align-self: stretch; display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; }
 .login-card input { padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }
 .login-card button {
+  align-self: stretch;
   padding: 10px;
   border: none;
   border-radius: 6px;
   background: var(--accent);
   color: white;
+  font-family: var(--font-body);
+  font-weight: 700;
   font-size: 1rem;
   cursor: pointer;
 }
+.login-card button:hover { background: var(--brand-dark); }
 .login-card .error { color: var(--red); font-size: 0.85rem; margin: 0; }
 
 @media (max-width: 480px) {
