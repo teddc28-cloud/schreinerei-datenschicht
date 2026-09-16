@@ -8,6 +8,31 @@ function addDays(d, n) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 }
 
+/** YYYY-MM-DD aus den lokalen Datumskomponenten - toISOString() rechnet auf UTC um und
+ * verschiebt dadurch das Datum je nach Server-Zeitzone um bis zu einen Tag. */
+function formatLocalDate(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Montag der Woche, in der `date` liegt (lokale Kalenderwoche, nicht rollierend). */
+function mondayOfWeek(date) {
+  const d = startOfDay(date);
+  const dayIndex = (d.getDay() + 6) % 7; // Montag = 0 .. Sonntag = 6
+  return addDays(d, -dayIndex);
+}
+
+/** ISO-8601-Kalenderwoche (deutsche Zaehlweise, Montag-Start, KW 1 enthaelt den ersten Donnerstag des Jahres). */
+function isoWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const firstThursdayDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstThursdayDayNum + 3);
+  return { woche: 1 + Math.round((d - firstThursday) / (7 * 86400000)), jahr: d.getUTCFullYear() };
+}
+
 /** Fixkosten-Betrag fuer ein Datum: Summe aller aktiven Zeilen mit tag_im_monat == Tag dieses Datums. */
 function fixedCostsForDate(fixedCosts, date) {
   const day = date.getDate();
@@ -30,7 +55,8 @@ export async function getLiquiditaetKachel(referenceDate = new Date()) {
   ]);
 
   const heute = startOfDay(referenceDate);
-  const horizontEnde = addDays(heute, horizontWochen * 7);
+  const montagAktuelleWoche = mondayOfWeek(heute);
+  const horizontEnde = addDays(montagAktuelleWoche, horizontWochen * 7);
 
   const [{ rows: forderungen }, { rows: verbindlichkeiten }, { rows: fixedCosts }] = await Promise.all([
     pool.query(
@@ -50,8 +76,9 @@ export async function getLiquiditaetKachel(referenceDate = new Date()) {
   let laufenderSaldo = kontostand;
 
   for (let w = 0; w < horizontWochen; w++) {
-    const wochenStart = addDays(heute, w * 7);
+    const wochenStart = addDays(montagAktuelleWoche, w * 7);
     const wochenEnde = addDays(wochenStart, 6);
+    const { woche: kw, jahr: kwJahr } = isoWeekNumber(wochenStart);
 
     const inWoche = (dueDate) => {
       if (!dueDate) return false;
@@ -77,8 +104,10 @@ export async function getLiquiditaetKachel(referenceDate = new Date()) {
 
     wochen.push({
       woche: w + 1,
-      von: wochenStart.toISOString().slice(0, 10),
-      bis: wochenEnde.toISOString().slice(0, 10),
+      kw,
+      kw_jahr: kwJahr,
+      von: formatLocalDate(wochenStart),
+      bis: formatLocalDate(wochenEnde),
       zufluss_forderungen_eur: Math.round(zufluss * 100) / 100,
       abfluss_verbindlichkeiten_eur: Math.round(abflussVerbindlichkeiten * 100) / 100,
       abfluss_fixkosten_eur: Math.round(fixkosten * 100) / 100,

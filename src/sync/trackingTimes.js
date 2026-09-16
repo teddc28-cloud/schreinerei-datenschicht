@@ -5,6 +5,13 @@ import { safeJsonStringify } from '../utils/safeJson.js';
 
 const nullIfZero = (v) => (v === 0 || v === null || v === undefined ? null : v);
 
+// toISOString() rechnet auf UTC um und verschiebt das Datum je nach Server-Zeitzone
+// um bis zu einen Tag - stattdessen aus den lokalen Datumskomponenten formatieren.
+function formatLocalDate(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function monthSlices(monthsBack) {
   const slices = [];
   const now = new Date();
@@ -12,8 +19,8 @@ function monthSlices(monthsBack) {
     const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
     slices.push({
-      start: from.toISOString().slice(0, 10),
-      end: to.toISOString().slice(0, 10),
+      start: formatLocalDate(from),
+      end: formatLocalDate(to),
     });
   }
   return slices;

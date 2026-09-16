@@ -139,7 +139,7 @@ function liquiditaetTile(l) {
       const negativ = w.saldo_eur < 0;
       return `
         <div class="bucket-row">
-          <span>KW ${w.woche} (${von}–${bis})</span>
+          <span>KW ${w.kw} (${von}–${bis})</span>
           <span class="${negativ ? 'ampel-rot' : ''}">${eur(w.saldo_eur)}</span>
         </div>`;
     })
