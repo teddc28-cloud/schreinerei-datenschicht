@@ -6,7 +6,6 @@ import 'dotenv/config';
 
 import { requireAuth, verifyCredentials } from './auth.js';
 import { getSyncStatus } from './tiles/status.js';
-import { getUmsatzKachel } from './tiles/umsatz.js';
 import { getForderungenKachel } from './tiles/forderungen.js';
 import { getUstKachel } from './tiles/ust.js';
 import { getRohgewinnKachel } from './tiles/rohgewinn.js';
@@ -61,10 +60,9 @@ app.get('/api/me', (req, res) => {
 
 app.get('/api/dashboard', requireAuth, async (req, res, next) => {
   try {
-    const [status, umsatz, forderungen, ust, rohgewinn, projektampeln, liquiditaet, reichts, werkstatt, geld, pipeline] =
+    const [status, forderungen, ust, rohgewinn, projektampeln, liquiditaet, reichts, werkstatt, geld, pipeline] =
       await Promise.all([
         getSyncStatus(),
-        getUmsatzKachel(),
         getForderungenKachel(),
         getUstKachel(),
         getRohgewinnKachel(),
@@ -77,7 +75,6 @@ app.get('/api/dashboard', requireAuth, async (req, res, next) => {
       ]);
     res.json({
       status,
-      umsatz,
       forderungen,
       ust,
       rohgewinn,

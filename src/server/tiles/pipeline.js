@@ -53,6 +53,9 @@ export async function getPipelineKachel(referenceDate = new Date()) {
 
   const round2 = (n) => Math.round(n * 100) / 100;
   const wandlungsquote = (ab, angebote) => (angebote.anzahl > 0 ? round2((ab.anzahl / angebote.anzahl) * 100) : null);
+  // Veraenderung der AB-Volumen-Kernzahl gg. Vergleichszeitraum, fuer kompakte Pfeil-Chips
+  // statt ausformulierter Vergleichssaetze.
+  const veraenderung = (basis) => (basis.volumen_eur > 0 ? round2(((abAktuell.volumen_eur - basis.volumen_eur) / basis.volumen_eur) * 100) : null);
 
   const ampelSchwelle = breakEven * 3;
 
@@ -63,16 +66,8 @@ export async function getPipelineKachel(referenceDate = new Date()) {
     wandlungsquote_prozent: wandlungsquote(abAktuell, angeboteAktuell),
     ampel_schwelle_eur: ampelSchwelle,
     rot: abAktuell.volumen_eur < ampelSchwelle,
-    vergleich_vorher: {
-      angebote: { ...angeboteVorher, volumen_eur: round2(angeboteVorher.volumen_eur) },
-      auftragseingang: { ...abVorher, volumen_eur: round2(abVorher.volumen_eur) },
-      wandlungsquote_prozent: wandlungsquote(abVorher, angeboteVorher),
-    },
-    vergleich_vorjahr: {
-      angebote: { ...angeboteVorjahr, volumen_eur: round2(angeboteVorjahr.volumen_eur) },
-      auftragseingang: { ...abVorjahr, volumen_eur: round2(abVorjahr.volumen_eur) },
-      wandlungsquote_prozent: wandlungsquote(abVorjahr, angeboteVorjahr),
-    },
+    vergleich_vorher_prozent: veraenderung({ volumen_eur: round2(abVorher.volumen_eur) }),
+    vergleich_vorjahr_prozent: veraenderung({ volumen_eur: round2(abVorjahr.volumen_eur) }),
   };
 }
 

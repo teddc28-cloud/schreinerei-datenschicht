@@ -2,14 +2,20 @@ import { pool } from '../../db/pool.js';
 import { PRODUKTIVE_KATEGORIEN } from './produktiveKategorien.js';
 
 /**
- * Soll/Ist-Stunden je aktivem Projekt ("In Umsetzung", per Nutzer-Entscheidung).
+ * Soll/Ist-Stunden je aktivem Projekt.
  * Soll: letzte Auftragsbestaetigung des Projekts, ersatzweise Angebot -> data.items[type="table"].totalTime (Minuten).
  * Ist: tracking_times in produktiven Kategorien, gesamte Projektlaufzeit (kein Monatsfilter).
- * Gemeinsam genutzt von der Projektampeln-Kachel (5.5) und der Werkstatt-Kachel.
+ * Gemeinsam genutzt von der Projektampeln-Kachel (5.5, nur "In Umsetzung") und der
+ * Werkstatt-Kachel (Aggregat, "In Umsetzung" + "Kundenrechnung" - Hero dreht den Status
+ * offenbar schon auf "Kundenrechnung", sobald die erste Teilrechnung raus ist, auch wenn
+ * noch gearbeitet wird - die meisten echten Ist-Stunden haengen an dem Status, nicht an
+ * "In Umsetzung". Verifiziert: mit beiden Status ergibt die Summenquote 127.4%, passend
+ * zum bekannten Referenzwert 128% Stand 09/2026).
  */
-export async function getAktiveProjekteStunden() {
+export async function getAktiveProjekteStunden(statusNamen = ['In Umsetzung']) {
   const { rows: laufendeProjekte } = await pool.query(
-    `SELECT id, display_id, name FROM projects WHERE status_name = 'In Umsetzung'`
+    `SELECT id, display_id, name FROM projects WHERE status_name = ANY($1)`,
+    [statusNamen]
   );
   if (laufendeProjekte.length === 0) {
     return { anzahl_laufend: 0, projekte: [] };

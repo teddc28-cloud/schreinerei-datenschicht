@@ -65,6 +65,7 @@ body {
 }
 
 .inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.inline-form[hidden] { display: none; }
 .inline-form input { padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; }
 .inline-form input[type="number"] { width: 100px; }
 .inline-form button {
@@ -162,8 +163,9 @@ body {
 
 .mini-compare {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
@@ -171,6 +173,32 @@ body {
   color: var(--muted);
 }
 .mini-compare b { color: var(--text); }
+
+.delta-chip {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.delta-chip.up { color: var(--green); background: color-mix(in srgb, var(--green) 12%, var(--bg)); }
+.delta-chip.down { color: var(--red); background: color-mix(in srgb, var(--red) 12%, var(--bg)); }
+
+.empty-state-link { color: var(--accent); text-decoration: none; font-weight: 700; }
+.empty-state-link:hover { text-decoration: underline; }
+
+.edit-inline-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 2px;
+  vertical-align: middle;
+}
+.edit-inline-btn:hover { color: var(--brand); }
 
 .tile {
   background: var(--card-bg);

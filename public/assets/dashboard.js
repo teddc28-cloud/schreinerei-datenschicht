@@ -14,22 +14,6 @@ function renderStatus(status) {
   el.classList.toggle('red', status.red);
 }
 
-function umsatzTile(u) {
-  const richtung = u.differenz_eur >= 0 ? 'up' : 'down';
-  const vergleich = u.differenz_prozent === null
-    ? 'kein Vorjahreswert'
-    : `${pct(u.differenz_prozent)} (${eur(u.differenz_eur)}) ggü. Vorjahresmonat`;
-
-  return `
-    <div class="tile">
-      <h2>Umsatz laufender Monat (netto)</h2>
-      <p class="value">${eur(u.umsatz_netto_eur)}</p>
-      <p class="compare ${richtung}">${vergleich}</p>
-      <p class="footnote">Basis: Rechnungsdatum, Ausgangsrechnungen netto</p>
-    </div>
-  `;
-}
-
 function forderungenTile(f) {
   const b = f.buckets;
   const row = (label, key) => `
@@ -169,8 +153,6 @@ function reichtsTile(r) {
 }
 
 function werkstattTile(w) {
-  const ampelSollIst = w.soll_ist_quote_prozent === null ? 'grau' : w.rot_soll_ist ? 'rot' : 'gruen';
-  const ampelStunden = w.rot_stunden_woche ? 'gelb' : 'gruen';
   const rows = w.ueberschreitungen
     .map(
       (p) => `
@@ -182,17 +164,17 @@ function werkstattTile(w) {
     .join('');
 
   return `
-    <div class="tile ampel-tile ampel-tile-${ampelSollIst}">
+    <div class="tile ampel-tile ampel-tile-${w.ampel}">
       <h2>Läuft die Werkstatt wirtschaftlich?</h2>
       <div class="stat-line">
         <div class="stat">
           <span class="stat-label">Soll-Ist-Quote (${w.anzahl_laufend} aktiv)</span>
-          <span class="stat-value"><span class="ampel-dot ${ampelSollIst}"></span>${w.soll_ist_quote_prozent === null ? '–' : w.soll_ist_quote_prozent.toFixed(0) + ' %'}</span>
+          <span class="stat-value"><span class="ampel-dot ${w.ampel_soll_ist}"></span>${w.soll_ist_quote_prozent === null ? '–' : w.soll_ist_quote_prozent.toFixed(0) + ' %'}</span>
           <span class="footnote">Ziel unter ${w.ziel_soll_ist_prozent.toFixed(0)} %</span>
         </div>
         <div class="stat">
           <span class="stat-label">Stunden letzte Woche</span>
-          <span class="stat-value"><span class="ampel-dot ${ampelStunden}"></span>${w.stunden_letzte_woche.toFixed(0)} h</span>
+          <span class="stat-value"><span class="ampel-dot ${w.ampel_stunden}"></span>${w.stunden_letzte_woche.toFixed(0)} h</span>
           <span class="footnote">Ziel ${w.ziel_stunden_woche} h</span>
         </div>
       </div>
@@ -204,7 +186,7 @@ function werkstattTile(w) {
 function geldTile(g) {
   const faelligkeit = g.naechste_faelligkeit
     ? `${new Date(g.naechste_faelligkeit.datum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} · ${g.naechste_faelligkeit.bezeichnung} (${eur(g.naechste_faelligkeit.betrag_eur)})`
-    : 'keine Fixkosten hinterlegt';
+    : '<a href="/settings.html" class="empty-state-link">→ Fixkosten eintragen</a>';
 
   return `
     <div class="tile tile-wide">
@@ -212,7 +194,13 @@ function geldTile(g) {
       <div class="stat-line">
         <div class="stat">
           <span class="stat-label">Kontostand</span>
-          <span class="stat-value ${g.kontostand_eur < 0 ? 'small' : ''}">${eur(g.kontostand_eur)}</span>
+          <span class="stat-value ${g.kontostand_eur < 0 ? 'small' : ''}" id="kontostand-anzeige">
+            ${eur(g.kontostand_eur)} <button type="button" class="edit-inline-btn" id="kontostand-edit-btn" title="Kontostand ändern">✎</button>
+          </span>
+          <form id="kontostand-inline-form" class="inline-form" hidden>
+            <input type="number" step="0.01" id="kontostand-inline-input" value="${g.kontostand_eur}" />
+            <button type="submit">Speichern</button>
+          </form>
         </div>
         <div class="stat">
           <span class="stat-label">Freier Rahmen Linie</span>
@@ -239,12 +227,12 @@ function geldTile(g) {
 
 function pipelineTile(p) {
   const ampel = p.rot ? 'rot' : 'gruen';
-  const vgl = (label, v) => `
-    <div class="mini-compare-row">
-      <b>${label}</b>: ${v.angebote.anzahl} Angebote (${eur(v.angebote.volumen_eur)}) →
-      ${v.auftragseingang.anzahl} AB (${eur(v.auftragseingang.volumen_eur)}),
-      ${v.wandlungsquote_prozent === null ? 'k.A.' : v.wandlungsquote_prozent.toFixed(0) + ' %'} Wandlung
-    </div>`;
+  const chip = (label, prozent) => {
+    if (prozent === null) return `<span class="delta-chip">${label}: k.A.</span>`;
+    const richtung = prozent >= 0 ? 'up' : 'down';
+    const pfeil = prozent >= 0 ? '↑' : '↓';
+    return `<span class="delta-chip ${richtung}">${label}: ${pfeil} ${Math.abs(prozent).toFixed(0)} %</span>`;
+  };
 
   return `
     <div class="tile tile-wide ampel-tile ampel-tile-${ampel}">
@@ -266,8 +254,9 @@ function pipelineTile(p) {
         </div>
       </div>
       <div class="mini-compare">
-        ${vgl('3 Monate davor', p.vergleich_vorher)}
-        ${vgl('dieselben 3 Monate Vorjahr', p.vergleich_vorjahr)}
+        <span class="footnote">Auftragseingang-Volumen ggü.</span>
+        ${chip('3 Monate davor', p.vergleich_vorher_prozent)}
+        ${chip('Vorjahr', p.vergleich_vorjahr_prozent)}
       </div>
     </div>
   `;
@@ -284,14 +273,39 @@ async function load() {
 
   document.getElementById('tiles-ueberblick').innerHTML =
     reichtsTile(data.reichts) + werkstattTile(data.werkstatt) + geldTile(data.geld) + pipelineTile(data.pipeline);
+  wireKontostandEdit();
 
   document.getElementById('tiles').innerHTML =
-    umsatzTile(data.umsatz) +
     forderungenTile(data.forderungen) +
     ustTile(data.ust) +
     rohgewinnTile(data.rohgewinn) +
     projektampelnTile(data.projektampeln) +
     liquiditaetTile(data.liquiditaet);
+}
+
+function wireKontostandEdit() {
+  const anzeige = document.getElementById('kontostand-anzeige');
+  const editBtn = document.getElementById('kontostand-edit-btn');
+  const form = document.getElementById('kontostand-inline-form');
+  const input = document.getElementById('kontostand-inline-input');
+  if (!editBtn || !form) return;
+
+  editBtn.addEventListener('click', () => {
+    anzeige.hidden = true;
+    form.hidden = false;
+    input.focus();
+    input.select();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    await fetch('/api/settings/kontostand', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: input.value }),
+    });
+    load();
+  });
 }
 
 load();

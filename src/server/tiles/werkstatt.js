@@ -4,6 +4,12 @@ import { PRODUKTIVE_KATEGORIEN } from './produktiveKategorien.js';
 import { getAktiveProjekteStunden } from './aktiveProjekteStunden.js';
 import { mondayOfWeek, addDays } from '../../utils/dates.js';
 
+// Projekte mit Status "In Umsetzung" ODER "Kundenrechnung" zaehlen als aktiv fuer die
+// Kapazitaetsauslastung: Hero dreht den Status offenbar schon auf "Kundenrechnung", sobald
+// die erste Teilrechnung raus ist, auch wenn noch gearbeitet wird - die meisten echten
+// Ist-Stunden haengen an diesem Status, nicht an "In Umsetzung" (siehe aktiveProjekteStunden.js).
+const WERKSTATT_STATUS = ['In Umsetzung', 'Kundenrechnung'];
+
 /**
  * Kachel 2 - "Laeuft die Werkstatt wirtschaftlich?"
  * Soll-Ist-Quote der aktiven Projekte (Summe Ist / Summe Soll, nicht Durchschnitt der
@@ -14,7 +20,7 @@ export async function getWerkstattKachel(referenceDate = new Date()) {
   const [zielSollIst, zielStundenWoche, { anzahl_laufend, projekte }] = await Promise.all([
     getParameterNumber('ziel_soll_ist', 1.05),
     getParameterNumber('ziel_stunden_woche', 100),
-    getAktiveProjekteStunden(),
+    getAktiveProjekteStunden(WERKSTATT_STATUS),
   ]);
 
   const summeSoll = projekte.reduce((s, p) => s + p.soll_stunden, 0);
@@ -47,14 +53,23 @@ export async function getWerkstattKachel(referenceDate = new Date()) {
       soll_stunden: p.soll_stunden,
     }));
 
+  const ampelSollIst = sollIstQuote === null ? 'grau' : sollIstQuote >= zielSollIst ? 'rot' : 'gruen';
+  const ampelStunden = stundenLetzteWoche < zielStundenWoche ? 'gelb' : 'gruen';
+
+  // Kachel-Rahmen zeigt die schlechtere der beiden Einzelampeln, damit "auf einen Blick"
+  // kein rot/gelb hinter einem gruenen Rahmen versteckt bleibt.
+  const schwere = { rot: 3, gelb: 2, gruen: 1, grau: 0 };
+  const ampelGesamt = schwere[ampelSollIst] >= schwere[ampelStunden] ? ampelSollIst : ampelStunden;
+
   return {
     anzahl_laufend,
+    ampel: ampelGesamt,
     soll_ist_quote_prozent: sollIstQuote === null ? null : round2(sollIstQuote * 100),
     ziel_soll_ist_prozent: round2(zielSollIst * 100),
-    rot_soll_ist: sollIstQuote !== null && sollIstQuote >= zielSollIst,
+    ampel_soll_ist: ampelSollIst,
     stunden_letzte_woche: round2(stundenLetzteWoche),
     ziel_stunden_woche: zielStundenWoche,
-    rot_stunden_woche: stundenLetzteWoche < zielStundenWoche,
+    ampel_stunden: ampelStunden,
     ueberschreitungen,
   };
 }
