@@ -155,6 +155,124 @@ function liquiditaetTile(l) {
   `;
 }
 
+function reichtsTile(r) {
+  const breite = r.quote_prozent === null ? 0 : Math.min(100, r.quote_prozent);
+  return `
+    <div class="tile ampel-tile ampel-tile-${r.ampel}">
+      <h2>Reicht's diesen Monat?</h2>
+      <p class="value"><span class="ampel-dot ${r.ampel}"></span>${eur(r.fakturiert_eur)}</p>
+      <p class="compare">von ${eur(r.break_even_eur)} Break-Even${r.quote_prozent === null ? '' : ` (${r.quote_prozent.toFixed(0)} %)`}</p>
+      <div class="progress-bar"><div class="progress-bar-fill ${r.ampel}" style="width:${breite}%"></div></div>
+      <p class="footnote">Schnitt letzte 3 volle Monate: ${eur(r.schnitt_letzte_3_monate_eur)}</p>
+    </div>
+  `;
+}
+
+function werkstattTile(w) {
+  const ampelSollIst = w.soll_ist_quote_prozent === null ? 'grau' : w.rot_soll_ist ? 'rot' : 'gruen';
+  const ampelStunden = w.rot_stunden_woche ? 'gelb' : 'gruen';
+  const rows = w.ueberschreitungen
+    .map(
+      (p) => `
+    <div class="bucket-row">
+      <span>${p.display_id ? `#${p.display_id} ` : ''}${p.name ?? 'Unbenannt'}</span>
+      <span class="ampel-rot">+${p.abweichung_stunden.toFixed(1)} h (${p.ist_stunden.toFixed(1)} / ${p.soll_stunden.toFixed(1)})</span>
+    </div>`
+    )
+    .join('');
+
+  return `
+    <div class="tile ampel-tile ampel-tile-${ampelSollIst}">
+      <h2>Läuft die Werkstatt wirtschaftlich?</h2>
+      <div class="stat-line">
+        <div class="stat">
+          <span class="stat-label">Soll-Ist-Quote (${w.anzahl_laufend} aktiv)</span>
+          <span class="stat-value"><span class="ampel-dot ${ampelSollIst}"></span>${w.soll_ist_quote_prozent === null ? '–' : w.soll_ist_quote_prozent.toFixed(0) + ' %'}</span>
+          <span class="footnote">Ziel unter ${w.ziel_soll_ist_prozent.toFixed(0)} %</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Stunden letzte Woche</span>
+          <span class="stat-value"><span class="ampel-dot ${ampelStunden}"></span>${w.stunden_letzte_woche.toFixed(0)} h</span>
+          <span class="footnote">Ziel ${w.ziel_stunden_woche} h</span>
+        </div>
+      </div>
+      ${rows ? `<div class="bucket-list">${rows}</div>` : ''}
+    </div>
+  `;
+}
+
+function geldTile(g) {
+  const faelligkeit = g.naechste_faelligkeit
+    ? `${new Date(g.naechste_faelligkeit.datum).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })} · ${g.naechste_faelligkeit.bezeichnung} (${eur(g.naechste_faelligkeit.betrag_eur)})`
+    : 'keine Fixkosten hinterlegt';
+
+  return `
+    <div class="tile tile-wide">
+      <h2>Reicht das Geld?</h2>
+      <div class="stat-line">
+        <div class="stat">
+          <span class="stat-label">Kontostand</span>
+          <span class="stat-value ${g.kontostand_eur < 0 ? 'small' : ''}">${eur(g.kontostand_eur)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Freier Rahmen Linie</span>
+          <span class="stat-value small">${eur(g.freier_rahmen_eur)} / ${eur(g.kk_linie_eur)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Forderungen fällig</span>
+          <span class="stat-value small">${eur(g.forderungen_faellig_eur)}</span>
+          <span class="footnote">davon ${eur(g.forderungen_ueberfaellig_eur)} überfällig</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Verbindlichkeiten fällig</span>
+          <span class="stat-value small">${eur(g.verbindlichkeiten_faellig_eur)}</span>
+          <span class="footnote">davon ${eur(g.verbindlichkeiten_ueberfaellig_eur)} überfällig</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Nächste Fälligkeit</span>
+          <span class="stat-value small">${faelligkeit}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function pipelineTile(p) {
+  const ampel = p.rot ? 'rot' : 'gruen';
+  const vgl = (label, v) => `
+    <div class="mini-compare-row">
+      <b>${label}</b>: ${v.angebote.anzahl} Angebote (${eur(v.angebote.volumen_eur)}) →
+      ${v.auftragseingang.anzahl} AB (${eur(v.auftragseingang.volumen_eur)}),
+      ${v.wandlungsquote_prozent === null ? 'k.A.' : v.wandlungsquote_prozent.toFixed(0) + ' %'} Wandlung
+    </div>`;
+
+  return `
+    <div class="tile tile-wide ampel-tile ampel-tile-${ampel}">
+      <h2>Kommt noch was rein? — rollierend 3 Monate</h2>
+      <div class="stat-line">
+        <div class="stat">
+          <span class="stat-label">Angebote raus</span>
+          <span class="stat-value">${p.angebote.anzahl}</span>
+          <span class="footnote">${eur(p.angebote.volumen_eur)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Auftragseingang</span>
+          <span class="stat-value"><span class="ampel-dot ${ampel}"></span>${p.auftragseingang.anzahl}</span>
+          <span class="footnote">${eur(p.auftragseingang.volumen_eur)} / Schwelle ${eur(p.ampel_schwelle_eur)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Wandlungsquote</span>
+          <span class="stat-value">${p.wandlungsquote_prozent === null ? '–' : p.wandlungsquote_prozent.toFixed(0) + ' %'}</span>
+        </div>
+      </div>
+      <div class="mini-compare">
+        ${vgl('3 Monate davor', p.vergleich_vorher)}
+        ${vgl('dieselben 3 Monate Vorjahr', p.vergleich_vorjahr)}
+      </div>
+    </div>
+  `;
+}
+
 async function load() {
   const res = await fetch('/api/dashboard');
   if (res.status === 401) {
@@ -163,6 +281,10 @@ async function load() {
   }
   const data = await res.json();
   renderStatus(data.status);
+
+  document.getElementById('tiles-ueberblick').innerHTML =
+    reichtsTile(data.reichts) + werkstattTile(data.werkstatt) + geldTile(data.geld) + pipelineTile(data.pipeline);
+
   document.getElementById('tiles').innerHTML =
     umsatzTile(data.umsatz) +
     forderungenTile(data.forderungen) +

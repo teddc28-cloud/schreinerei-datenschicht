@@ -12,6 +12,10 @@ import { getUstKachel } from './tiles/ust.js';
 import { getRohgewinnKachel } from './tiles/rohgewinn.js';
 import { getProjektampelnKachel } from './tiles/projektampeln.js';
 import { getLiquiditaetKachel } from './tiles/liquiditaet.js';
+import { getReichtsKachel } from './tiles/reichts.js';
+import { getWerkstattKachel } from './tiles/werkstatt.js';
+import { getGeldKachel } from './tiles/geld.js';
+import { getPipelineKachel } from './tiles/pipeline.js';
 import { startScheduler } from '../scheduler.js';
 import {
   getSettings,
@@ -57,16 +61,33 @@ app.get('/api/me', (req, res) => {
 
 app.get('/api/dashboard', requireAuth, async (req, res, next) => {
   try {
-    const [status, umsatz, forderungen, ust, rohgewinn, projektampeln, liquiditaet] = await Promise.all([
-      getSyncStatus(),
-      getUmsatzKachel(),
-      getForderungenKachel(),
-      getUstKachel(),
-      getRohgewinnKachel(),
-      getProjektampelnKachel(),
-      getLiquiditaetKachel(),
-    ]);
-    res.json({ status, umsatz, forderungen, ust, rohgewinn, projektampeln, liquiditaet });
+    const [status, umsatz, forderungen, ust, rohgewinn, projektampeln, liquiditaet, reichts, werkstatt, geld, pipeline] =
+      await Promise.all([
+        getSyncStatus(),
+        getUmsatzKachel(),
+        getForderungenKachel(),
+        getUstKachel(),
+        getRohgewinnKachel(),
+        getProjektampelnKachel(),
+        getLiquiditaetKachel(),
+        getReichtsKachel(),
+        getWerkstattKachel(),
+        getGeldKachel(),
+        getPipelineKachel(),
+      ]);
+    res.json({
+      status,
+      umsatz,
+      forderungen,
+      ust,
+      rohgewinn,
+      projektampeln,
+      liquiditaet,
+      reichts,
+      werkstatt,
+      geld,
+      pipeline,
+    });
   } catch (err) {
     next(err);
   }

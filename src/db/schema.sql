@@ -175,7 +175,13 @@ INSERT INTO parameters (key, value, beschreibung) VALUES
   ('sync_warnschwelle', '3', 'Stunden, Statusfeld Kopfzeile'),
   ('liquiditaet_horizont', '8', 'Wochen, Liquiditaetsvorschau'),
   ('kontostand', '0', 'EUR, manueller Startwert Liquiditaetsvorschau'),
-  ('eingangsrechnungen_warnschwelle', '3', 'Anzahl, unter der die USt-Kachel vor einer moeglicherweise zu hoch ausgewiesenen Zahllast warnt')
+  ('eingangsrechnungen_warnschwelle', '3', 'Anzahl, unter der die USt-Kachel vor einer moeglicherweise zu hoch ausgewiesenen Zahllast warnt'),
+  ('break_even_monat', '45169', 'EUR, Stand 09/2026 - Kachel "Reicht''s diesen Monat?"'),
+  ('fixkosten_monat', '25331', 'EUR zahlungswirksam inkl. Tilgung + Privatentnahmen'),
+  ('rohertragsquote', '0.5608', 'Anteil, nicht im Dashboard angezeigt - Herleitung Break-Even'),
+  ('kk_linie', '30000', 'EUR, Kontokorrentlinie - Kachel "Reicht das Geld?"'),
+  ('ziel_stunden_woche', '100', 'Stunden/Woche, Kachel "Laeuft die Werkstatt wirtschaftlich?"'),
+  ('ziel_soll_ist', '1.05', 'Soll-Ist-Quote aktive Projekte, ab hier gelb/rot')
 ON CONFLICT (key) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS users (

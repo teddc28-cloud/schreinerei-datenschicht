@@ -98,12 +98,79 @@ body {
 }
 .fixed-costs-table button:hover { background: var(--bg); }
 
+.section-heading {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 20px 20px 0;
+}
+.section-heading:first-of-type { margin-top: 20px; }
+
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
   padding: 20px;
 }
+
+.tiles-ueberblick { padding-bottom: 4px; }
+
+.ampel-tile { border-top-width: 4px; }
+.ampel-tile.ampel-tile-gruen { border-top-color: var(--green); }
+.ampel-tile.ampel-tile-gelb { border-top-color: var(--brand-yellow); }
+.ampel-tile.ampel-tile-rot { border-top-color: var(--red); }
+.ampel-tile.ampel-tile-grau { border-top-color: var(--border); }
+
+.ampel-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.ampel-dot.gruen { background: var(--green); }
+.ampel-dot.gelb { background: var(--brand-yellow); }
+.ampel-dot.rot { background: var(--red); }
+.ampel-dot.grau { background: var(--border); }
+
+.progress-bar {
+  background: var(--bg);
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.progress-bar-fill { height: 100%; border-radius: 6px; }
+.progress-bar-fill.gruen { background: var(--green); }
+.progress-bar-fill.gelb { background: var(--brand-yellow); }
+.progress-bar-fill.rot { background: var(--red); }
+
+.stat-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 8px;
+}
+.stat-line .stat { display: flex; flex-direction: column; gap: 2px; min-width: 90px; }
+.stat-line .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.stat-line .stat-value { font-family: var(--font-display); font-weight: 900; font-size: 1.15rem; color: var(--brand-dark); }
+.stat-line .stat-value.small { font-size: 0.95rem; font-weight: 700; font-family: var(--font-body); }
+
+.mini-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.mini-compare b { color: var(--text); }
 
 .tile {
   background: var(--card-bg);
