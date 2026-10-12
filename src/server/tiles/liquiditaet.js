@@ -1,4 +1,5 @@
 import { pool } from '../../db/pool.js';
+import { OFFENE_RECHNUNGEN_WHERE } from './offeneRechnungen.js';
 import { getParameterNumber } from '../../db/parameters.js';
 import { startOfDay, addDays, formatLocalDate, mondayOfWeek, isoWeekNumber } from '../../utils/dates.js';
 
@@ -31,12 +32,12 @@ export async function getLiquiditaetKachel(referenceDate = new Date()) {
     pool.query(
       `SELECT booking_due_date AS due_date, booking_balance AS betrag
        FROM documents
-       WHERE type = 'invoice' AND booking_is_open = true`
+       WHERE ${OFFENE_RECHNUNGEN_WHERE}`
     ),
     pool.query(
       `SELECT due_date, open_amount AS betrag
        FROM receipts
-       WHERE paid_date IS NULL AND open_amount IS NOT NULL AND open_amount > 0`
+       WHERE paid_date IS NULL AND open_amount IS NOT NULL AND open_amount > 0 AND deleted_at IS NULL`
     ),
     pool.query(`SELECT bezeichnung, betrag, tag_im_monat, aktiv FROM fixed_costs WHERE aktiv = true`),
   ]);

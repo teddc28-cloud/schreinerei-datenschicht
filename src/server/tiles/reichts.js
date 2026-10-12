@@ -18,7 +18,7 @@ export async function getReichtsKachel(referenceDate = new Date()) {
     pool.query(
       `SELECT COALESCE(SUM(value), 0) AS summe
        FROM documents
-       WHERE type = 'invoice' AND status_code IN ('100', '200')
+       WHERE type = 'invoice' AND status_code IN ('100', '200') AND deleted_at IS NULL
          AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
       [year, month]
     ),
@@ -27,7 +27,7 @@ export async function getReichtsKachel(referenceDate = new Date()) {
     pool.query(
       `SELECT EXTRACT(YEAR FROM date) AS jahr, EXTRACT(MONTH FROM date) AS monat, SUM(value) AS summe
        FROM documents
-       WHERE type = 'invoice' AND status_code IN ('100', '200')
+       WHERE type = 'invoice' AND status_code IN ('100', '200') AND deleted_at IS NULL
          AND date >= (date_trunc('month', $1::date) - interval '3 months')
          AND date < date_trunc('month', $1::date)
        GROUP BY 1, 2`,

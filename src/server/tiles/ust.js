@@ -15,13 +15,14 @@ export async function getUstKachel(referenceDate = new Date()) {
     pool.query(
       `SELECT COALESCE(SUM(vat), 0) AS ust
        FROM documents
-       WHERE type = 'invoice' AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
+       WHERE type = 'invoice' AND deleted_at IS NULL
+         AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
       [year, month]
     ),
     pool.query(
       `SELECT COALESCE(SUM(vat), 0) AS vorsteuer, COUNT(*) AS anzahl
        FROM receipts
-       WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
+       WHERE deleted_at IS NULL AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
       [year, month]
     ),
     getParameterNumber('eingangsrechnungen_warnschwelle', 3),

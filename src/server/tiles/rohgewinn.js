@@ -7,7 +7,8 @@ async function periodValues(year, month) {
     pool.query(
       `SELECT COALESCE(SUM(value), 0) AS umsatz
        FROM documents
-       WHERE type = 'invoice' AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
+       WHERE type = 'invoice' AND deleted_at IS NULL
+         AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
       [year, month]
     ),
     pool.query(
@@ -15,13 +16,13 @@ async function periodValues(year, month) {
       // auf Betriebsebene aus allen Eingangsrechnungen des Monats genaehert (Empfehlung "Variante 2").
       `SELECT COALESCE(SUM(value), 0) AS material
        FROM receipts
-       WHERE EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
+       WHERE deleted_at IS NULL AND EXTRACT(YEAR FROM date) = $1 AND EXTRACT(MONTH FROM date) = $2`,
       [year, month]
     ),
     pool.query(
       `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM ("end" - start))), 0) / 3600 AS stunden
        FROM tracking_times
-       WHERE tracking_times_category_id = ANY($1)
+       WHERE tracking_times_category_id = ANY($1) AND deleted_at IS NULL
          AND EXTRACT(YEAR FROM start) = $2 AND EXTRACT(MONTH FROM start) = $3
          AND "end" IS NOT NULL`,
       [PRODUKTIVE_KATEGORIEN, year, month]

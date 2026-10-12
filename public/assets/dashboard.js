@@ -10,7 +10,8 @@ function renderStatus(status) {
     return;
   }
   const d = new Date(status.last_success);
-  el.textContent = `Letzter Sync: ${d.toLocaleString('de-DE')}`;
+  const probleme = (status.bereiche_mit_problem ?? []).map((b) => `${b.bereich}: ${b.zustand.replace(/_/g, ' ')}`);
+  el.textContent = `Letzter Sync: ${d.toLocaleString('de-DE')}` + (probleme.length ? ` · Achtung ${probleme.join(', ')}` : '');
   el.classList.toggle('red', status.red);
 }
 

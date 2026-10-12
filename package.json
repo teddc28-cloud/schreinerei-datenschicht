@@ -13,7 +13,8 @@
     "cron": "node src/cron.js",
     "dev": "node --watch --watch-path=src src/server/index.js",
     "prestart": "node src/db/migrate.js",
-    "start": "node src/server/index.js"
+    "start": "node src/server/index.js",
+    "test:zeitfenster": "node tests/sync/zeitfenster.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

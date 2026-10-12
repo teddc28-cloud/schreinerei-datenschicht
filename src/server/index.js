@@ -1,3 +1,4 @@
+import '../tz.js'; // zuerst: Zeitzone (Europe/Berlin) vor jedem Date-Zugriff
 import express from 'express';
 import session from 'express-session';
 import path from 'node:path';

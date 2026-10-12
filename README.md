@@ -26,7 +26,15 @@ npm run dev             # Server auf http://localhost:3000
 | `SCHEDULER_ENABLED` | `false` fuer lokale Entwicklung (sonst sofortiger Sync bei jedem `--watch`-Neustart). Auf Railway weglassen oder `true`. |
 
 Manueller Sync-Lauf zum Testen: `node src/sync/index.js hourly` (oder `nightly` / `initial`
-fuer den Erstlauf mit zwei Jahren Historie).
+fuer den Erstlauf mit zwei Jahren Historie). Stuendlich: laufender + letzter Monat Zeitbuchungen,
+naechtlich 3 Monate, Erstlauf 25 Monate.
+
+## Datenschicht v3 (Bereichslaeufe, Sperren, Versionen)
+
+Ab diesem Stand setzt der Sync die Datenschicht-Migrationen 010–060 voraus (Schema `ds`).
+Reihenfolge Migration → Code → Pflichtstempel und Ruecksetzplan: siehe `docs/V3-SYNC-UMSTELLUNG.md`.
+Loeschmarkierungen werden nie automatisch gesetzt; nach jedem vollstaendigen Bereichsabruf laeuft nur ein
+Probelauf, dessen Kandidaten in `sync_runs.details` protokolliert werden.
 
 ## Deploy auf Railway
 

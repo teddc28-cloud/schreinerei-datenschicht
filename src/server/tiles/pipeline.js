@@ -28,7 +28,7 @@ export async function getPipelineKachel(referenceDate = new Date()) {
     const { rows } = await pool.query(
       `SELECT COUNT(*) AS anzahl, COALESCE(SUM(value), 0) AS volumen
        FROM documents
-       WHERE type = $1 AND status_code NOT IN ('600', '1000')
+       WHERE type = $1 AND status_code NOT IN ('600', '1000') AND deleted_at IS NULL
          AND date >= $2 AND date <= $3`,
       [type, von, bis]
     );

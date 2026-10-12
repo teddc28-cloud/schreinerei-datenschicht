@@ -12,7 +12,7 @@ export async function getProjektampelnKachel() {
 
   const ergebnisse = projekte
     .map((p) => ({ ...p, rot: p.prozent >= schwelleRot }))
-    .sort((a, b) => b.prozent - a.prozent);
+    .sort((a, b) => b.prozent - a.prozent || Number(a.id) - Number(b.id)); // Gleichstand stabil nach Projekt-ID
 
   const top = ergebnisse.slice(0, 5);
   const flop = ergebnisse.slice(-5).reverse();

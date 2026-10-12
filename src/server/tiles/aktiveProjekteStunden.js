@@ -11,10 +11,12 @@ import { PRODUKTIVE_KATEGORIEN } from './produktiveKategorien.js';
  * noch gearbeitet wird - die meisten echten Ist-Stunden haengen an dem Status, nicht an
  * "In Umsetzung". Verifiziert: mit beiden Status ergibt die Summenquote 127.4%, passend
  * zum bekannten Referenzwert 128% Stand 09/2026).
+ * Bei mehreren Entwuerfen gleichen Typs und Datums entscheidet die hoechste Entwurfs-ID (juengster Stand) –
+ * vorher war die Auswahl bei Gleichstand zufaellig (physische Zeilenreihenfolge).
  */
 export async function getAktiveProjekteStunden(statusNamen = ['In Umsetzung']) {
   const { rows: laufendeProjekte } = await pool.query(
-    `SELECT id, display_id, name FROM projects WHERE status_name = ANY($1)`,
+    `SELECT id, display_id, name FROM projects WHERE status_name = ANY($1) AND deleted_at IS NULL`,
     [statusNamen]
   );
   if (laufendeProjekte.length === 0) {
@@ -25,8 +27,8 @@ export async function getAktiveProjekteStunden(statusNamen = ['In Umsetzung']) {
   const { rows: drafts } = await pool.query(
     `SELECT DISTINCT ON (project_match_id) project_match_id, data
      FROM document_drafts
-     WHERE project_match_id = ANY($1) AND type IN ('confirmation', 'offer')
-     ORDER BY project_match_id, (type = 'confirmation') DESC, (data->>'date') DESC NULLS LAST`,
+     WHERE project_match_id = ANY($1) AND type IN ('confirmation', 'offer') AND deleted_at IS NULL
+     ORDER BY project_match_id, (type = 'confirmation') DESC, (data->>'date') DESC NULLS LAST, id DESC`,
     [projectIds]
   );
   const draftByProject = new Map(drafts.map((d) => [String(d.project_match_id), d.data]));
@@ -35,6 +37,7 @@ export async function getAktiveProjekteStunden(statusNamen = ['In Umsetzung']) {
     `SELECT project_match_id, COALESCE(SUM(EXTRACT(EPOCH FROM ("end" - start))), 0) / 3600 AS stunden
      FROM tracking_times
      WHERE project_match_id = ANY($1) AND tracking_times_category_id = ANY($2) AND "end" IS NOT NULL
+       AND deleted_at IS NULL
      GROUP BY project_match_id`,
     [projectIds, PRODUKTIVE_KATEGORIEN]
   );

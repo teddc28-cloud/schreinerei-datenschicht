@@ -33,7 +33,7 @@ export async function getWerkstattKachel(referenceDate = new Date()) {
   const { rows: wochenRows } = await pool.query(
     `SELECT COALESCE(SUM(EXTRACT(EPOCH FROM ("end" - start))), 0) / 3600 AS stunden
      FROM tracking_times
-     WHERE tracking_times_category_id = ANY($1) AND "end" IS NOT NULL
+     WHERE tracking_times_category_id = ANY($1) AND "end" IS NOT NULL AND deleted_at IS NULL
        AND start >= $2 AND start < $3`,
     [PRODUKTIVE_KATEGORIEN, montagLetzteWoche, sonntagLetzteWoche]
   );

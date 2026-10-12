@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { shortError } from '../utils/errors.js';
 
 const HERO_API_URL = process.env.HERO_API_URL ?? 'https://login.hero-software.de/api/external/v9/graphql';
 
@@ -22,6 +23,8 @@ export async function heroQuery(query, variables = {}, { retries = 3 } = {}) {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ query, variables }),
+        // Eigenes Zeitlimit je Anfrage: sonst koennen Wiederholungen die Bereichssperre (30 min) aufbrauchen
+        signal: AbortSignal.timeout(Number(process.env.HERO_TIMEOUT_MS ?? 120000)),
       });
     } catch (networkErr) {
       if (attempt >= retries) throw networkErr;
@@ -34,12 +37,12 @@ export async function heroQuery(query, variables = {}, { retries = 3 } = {}) {
         await sleep(2 ** attempt * 1000);
         continue;
       }
-      throw new Error(`Hero API HTTP ${res.status}: ${await res.text()}`);
+      throw new Error(`Hero API HTTP ${res.status}: ${shortError(await res.text(), 200)}`);
     }
 
     const json = await res.json();
     if (json.errors) {
-      throw new Error(`Hero API Fehler: ${JSON.stringify(json.errors)}`);
+      throw new Error(`Hero API Fehler: ${shortError(JSON.stringify(json.errors), 200)}`);
     }
     return json.data;
   }
@@ -49,18 +52,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Holt alle Seiten einer paginierten Hero-Query (first/offset). */
-export async function heroQueryAllPages(buildQuery, rootKey, { pageSize = 500 } = {}) {
-  const results = [];
+/**
+ * Seitenweiser Abruf (first/offset) als async Iterator: Aufrufer schreiben jede Seite sofort in einer
+ * eigenen kurzen Transaktion. `last` = regulaeres Seitenende (Seite kleiner als pageSize).
+ * Paginierung geprueft am 12.10.2026: 100er- und 500er-Seiten sowie orderBy id/created liefern
+ * dieselbe Menge ohne Dubletten (project_matches).
+ */
+export async function* heroPages(buildQuery, pickRows, { pageSize = 500 } = {}) {
   let offset = 0;
-  // Hero deckelt Ergebnisse bei ca. 2000 pro Aufruf -> in Seiten abfragen, bis eine Seite leer/kleiner als pageSize ist.
-  while (true) {
-    const query = buildQuery(pageSize, offset);
-    const data = await heroQuery(query);
-    const page = data[rootKey] ?? [];
-    results.push(...page);
-    if (page.length < pageSize) break;
+  for (let page = 1; ; page++) {
+    const data = await heroQuery(buildQuery(pageSize, offset));
+    const rows = pickRows(data) ?? [];
+    const last = rows.length < pageSize;
+    yield { page, rows, last };
+    if (last) return;
     offset += pageSize;
   }
-  return results;
 }

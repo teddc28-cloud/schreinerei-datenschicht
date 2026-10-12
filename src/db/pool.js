@@ -1,3 +1,4 @@
+import { APP_TZ } from '../tz.js'; // zuerst: setzt process.env.TZ
 import pg from 'pg';
 import 'dotenv/config';
 
@@ -8,6 +9,9 @@ export const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('railway') ? { rejectUnauthorized: false } : false,
   keepAlive: true,
   max: 5,
+  // Datenbank-Sitzungen in deutscher Ortszeit: EXTRACT(MONTH FROM start) u. Ae. auf timestamptz
+  // rechnen sonst in UTC und ordnen Buchungen um Mitternacht dem falschen Tag/Monat zu.
+  options: `-c TimeZone=${APP_TZ}`,
 });
 
 // Pool selbst darf einzelne Idle-Verbindungsfehler nicht killen (passiert bei der
@@ -18,7 +22,7 @@ pool.on('error', (err) => {
 
 const TRANSIENT_DB_ERRORS = ['Connection terminated', 'ECONNRESET', 'ETIMEDOUT', 'connection reset'];
 
-function isTransient(err) {
+export function isTransient(err) {
   return TRANSIENT_DB_ERRORS.some((m) => err?.message?.includes(m));
 }
 

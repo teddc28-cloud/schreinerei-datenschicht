@@ -1,16 +1,18 @@
 import { pool } from '../../db/pool.js';
+import { OFFENE_RECHNUNGEN_WHERE } from './offeneRechnungen.js';
 
 /**
  * 5.4 Offene und ueberfaellige Forderungen.
  * Basis: bestehendes Skript liquiditaet.mjs (customer_document_booking.is_open/due_date/balance),
  * Datenzugriff auf die Datenbank umgestellt. Altersstruktur-Grenzen wie im Pflichtenheft:
  * bis 14 Tage / 15-30 / 31-60 / ueber 60 Tage (Tage seit Faelligkeit).
+ * Stornierte Rechnungen (status_code 600) zaehlen nicht: siehe OFFENE_RECHNUNGEN_WHERE.
  */
 export async function getForderungenKachel(referenceDate = new Date()) {
   const { rows } = await pool.query(
     `SELECT nr, value, booking_due_date, booking_balance
      FROM documents
-     WHERE type = 'invoice' AND booking_is_open = true`
+     WHERE ${OFFENE_RECHNUNGEN_WHERE}`
   );
 
   const today = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), referenceDate.getDate());
