@@ -9,7 +9,7 @@ import { safeJsonStringify } from '../utils/safeJson.js';
  * (Erweiterung auf type: "all" aendert Dashboard-Mengen → eigene Entscheidung, siehe docs/V3-SYNC-UMSTELLUNG.md).
  */
 export async function syncProjects(run) {
-  for await (const { rows, last } of heroPages(PROJECT_MATCHES_QUERY, (d) => d.project_matches, { pageSize: 500 })) {
+  for await (const { rows, last } of heroPages(PROJECT_MATCHES_QUERY, (d) => d?.project_matches, { pageSize: 500 })) {
     await run.writeTx(async (c) => {
       for (const p of rows) {
         await c.query(

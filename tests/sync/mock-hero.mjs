@@ -61,6 +61,9 @@ http.createServer((req, res) => {
       if (f.kind === 'delay') { await new Promise((r) => setTimeout(r, f.ms)); continue; }
       if (f.kind === 'graphql') return send(res, 200, { errors: [{ message: `Testfehler auf Seite ${page}: ` + 'x'.repeat(2000) }] });
       if (f.kind === 'http500') return send(res, 500, 'Internal Server Error');
+      if (f.kind === 'missing') return send(res, 200, { data: {} });                 // Datenfeld fehlt
+      if (f.kind === 'null') return send(res, 200, { data: { [q.root]: null } });    // Datenfeld null
+      if (f.kind === 'empty') return send(res, 200, { data: wrap(q.root, []) });     // echtes leeres Array
       if (f.kind === 'html502') return send(res, 502, '<html><head><title>502 Bad Gateway</title></head><body>' + '<p>upstream</p>'.repeat(300) + '</body></html>', 'text/html');
     }
     const rows = rowsFor(q.root, q.args);

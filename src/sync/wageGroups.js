@@ -7,7 +7,10 @@ const PAGE = 200;
 export async function syncWageGroups(run) {
   // Kleine, stabile Liste (~10 Zeilen) - eine Seite reicht. Vollstaendig nur, wenn die Seite nicht voll ist.
   const data = await heroQuery(WAGE_GROUPS_QUERY(PAGE, 0));
-  const rows = data.WageGroup_WageGroups.edges.map((e) => e.node);
+  const edges = data?.WageGroup_WageGroups?.edges;
+  if (!Array.isArray(edges)) throw new Error(`HERO-Antwort ohne gueltige Lohngruppenliste: ${edges === null ? 'null' : typeof edges}`);
+  if (edges.some((e) => !e?.node)) throw new Error('HERO-Antwort mit leeren Lohngruppen-Eintraegen');
+  const rows = edges.map((e) => e.node);
 
   await run.writeTx(async (c) => {
     for (const w of rows) {

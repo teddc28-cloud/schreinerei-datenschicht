@@ -84,7 +84,7 @@ export async function syncDocumentAreas({ runId, mode }) {
   try {
     try {
       // Kleinere Seiten: published_customer_document_draft.data ist gross (500/Seite → HTTP 502 beobachtet).
-      for await (const { rows, last } of heroPages(CUSTOMER_DOCUMENTS_QUERY, (d) => d.customer_documents, { pageSize: 100 })) {
+      for await (const { rows, last } of heroPages(CUSTOMER_DOCUMENTS_QUERY, (d) => d?.customer_documents, { pageSize: 100 })) {
         await docs.run.writeTx((c) => writeDocuments(c, rows));
         if (drafts.run && !draftError) {
           try {

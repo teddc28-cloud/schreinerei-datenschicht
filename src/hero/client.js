@@ -54,7 +54,8 @@ function sleep(ms) {
 
 /**
  * Seitenweiser Abruf (first/offset) als async Iterator: Aufrufer schreiben jede Seite sofort in einer
- * eigenen kurzen Transaktion. `last` = regulaeres Seitenende (Seite kleiner als pageSize).
+ * eigenen kurzen Transaktion. `last` = regulaeres Seitenende (Seite kleiner als pageSize; ein echtes leeres
+ * Array ist ein gueltiges Seitenende). `pickRows` muss bei fehlendem Feld undefined/null liefern, nicht [].
  * Paginierung geprueft am 12.10.2026: 100er- und 500er-Seiten sowie orderBy id/created liefern
  * dieselbe Menge ohne Dubletten (project_matches).
  */
@@ -62,7 +63,12 @@ export async function* heroPages(buildQuery, pickRows, { pageSize = 500 } = {}) 
   let offset = 0;
   for (let page = 1; ; page++) {
     const data = await heroQuery(buildQuery(pageSize, offset));
-    const rows = pickRows(data) ?? [];
+    const rows = pickRows(data);
+    // Nur ein echtes Array ist eine gueltige Seite. Fehlt das Datenfeld oder ist es null, ist das KEIN
+    // Seitenende, sondern eine fehlerhafte Antwort → Bereich wird error/unvollstaendig, kein Loeschabgleich.
+    if (!Array.isArray(rows)) {
+      throw new Error(`HERO-Antwort ohne gueltige Datenliste (Seite ${page}, offset ${offset}): ${rows === null ? 'null' : typeof rows}`);
+    }
     const last = rows.length < pageSize;
     yield { page, rows, last };
     if (last) return;

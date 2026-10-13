@@ -237,6 +237,101 @@ if (stage === 'altcode') {
   ok(unst === Number(await one(`SELECT count(*) FROM projects`)), 'alter Code schreibt ungestempelt (last_seen_run_id NULL)', String(unst));
 }
 
+if (stage === 'verbindung') {
+  // Review-Befund 1: Verbindungsabbrueche der fest ausgeliehenen DB-Verbindungen
+  // A) Abbruch WAEHREND der HERO-Abfrage (Verbindung ausgeliehen, aber ruhend) → Prozess laeuft weiter,
+  //    Bereich verbindet neu und schliesst vollstaendig ab.
+  await control([{ root: 'customer_documents', page: 2, kind: 'delay', ms: 5000, once: true }]);
+  const before = Number(await one(`SELECT max(id) FROM sync_runs`));
+  const v0 = await versions();
+  const P = syncProc('hourly');
+  let killed = [];
+  for (let i = 0; i < 300 && killed.length < 2; i++) {
+    await new Promise((r) => setTimeout(r, 100));
+    const st = await mockStats();
+    if ((st.customer_documents ?? 0) >= 2) { // Seite 2 wird gerade (verzoegert) abgefragt
+      killed = (await q(`SELECT application_name, pg_terminate_backend(pid) ok FROM pg_stat_activity
+                         WHERE application_name IN ('ds-sync:documents','ds-sync:document_drafts') AND state = 'idle'`)).filter((r) => r.ok);
+    }
+  }
+  ok(killed.length === 2, 'A: ruhende Verbindungen documents + document_drafts waehrend HERO-Abfrage getrennt', killed.map((k) => k.application_name).join(','));
+  const r = await P.done;
+  const run = (await q(`SELECT id, status, details FROM sync_runs WHERE id > $1 ORDER BY id`, [before]))[0];
+  const ar = await areaRuns(run.id);
+  console.log(`A: exit ${r.code}, ${r.ms} ms`, JSON.stringify(summary(run.details)), 'neue Verbindungen:', run.details.documents?.neue_verbindungen, run.details.document_drafts?.neue_verbindungen);
+  ok(r.code === 0 && !/Unhandled|uncaught|ECONNRESET.*at /i.test(r.out), 'A: Prozess nicht abgestuerzt (exit 0, kein unbehandelter Fehler)');
+  ok(run.status === 'success', 'A: sync_runs success');
+  ok(ar.documents.status === 'success' && ar.documents.complete && ar.document_drafts.status === 'success' && ar.document_drafts.complete, 'A: documents/drafts nach Neuverbindung success + vollstaendig');
+  ok((run.details.documents?.neue_verbindungen ?? 0) >= 1 && (run.details.document_drafts?.neue_verbindungen ?? 0) >= 1, 'A: Neuverbindung protokolliert');
+  ok(Number(await one(`SELECT count(*) FROM documents WHERE last_seen_run_id = $1`, [run.id])) === ar.documents.rows_fetched, 'A: alle Belege gestempelt = rows_fetched');
+  ok((await versions()) === v0, 'A: keine zusaetzlichen Inhaltsversionen');
+  ok(Number(await one(`SELECT count(*) FROM ds.sync_area_leases WHERE lease_token IS NOT NULL`)) === 0, 'A: alle Sperren freigegeben');
+
+  // B) Abbruch WAEHREND einer Schreibtransaktion, bei jedem Versuch (Testtrigger beendet die eigene Sitzung)
+  //    → Wiederholungen erschoepft, documents error/unvollstaendig, Prozess und uebrige Bereiche laufen weiter.
+  await control();
+  await q(`CREATE FUNCTION public.zz_test_kill() RETURNS trigger LANGUAGE plpgsql AS $f$
+           BEGIN IF current_setting('application_name') = 'ds-sync:documents' THEN PERFORM pg_terminate_backend(pg_backend_pid()); END IF; RETURN NULL; END $f$`);
+  await q(`CREATE TRIGGER zz_test_kill BEFORE INSERT OR UPDATE ON public.documents FOR EACH STATEMENT EXECUTE FUNCTION public.zz_test_kill()`);
+  let rb, runB;
+  try {
+    rb = await syncProc('hourly').done;
+    runB = await lastRun();
+  } finally {
+    await q(`DROP TRIGGER zz_test_kill ON public.documents`);
+    await q(`DROP FUNCTION public.zz_test_kill()`);
+  }
+  const arB = await areaRuns(runB.id);
+  console.log(`B: exit ${rb.code}, ${rb.ms} ms`, JSON.stringify(summary(runB.details)), (runB.details.documents?.fehler ?? '').slice(0, 90));
+  ok(rb.code === 0, 'B: Prozess laeuft weiter (exit 0)');
+  ok(arB.documents.status === 'error' && !arB.documents.complete, 'B: documents error, nicht vollstaendig');
+  ok(!runB.details.documents.loeschabgleich, 'B: kein Loesch-Probelauf');
+  ok(Number(await one(`SELECT count(*) FROM documents WHERE last_seen_run_id = $1`, [runB.id])) === 0, 'B: nichts von documents committet');
+  ok(['projects', 'wage_groups', 'receipts', 'tracking_times'].every((a) => arB[a]?.status === 'success'), 'B: uebrige Bereiche success');
+  ok(runB.status === 'error' && /documents/.test(runB.error_message ?? ''), 'B: sync_runs error mit Bereich documents');
+  ok(Number(await one(`SELECT count(*) FROM ds.sync_area_leases WHERE lease_token IS NOT NULL`)) === 0, 'B: alle Sperren freigegeben');
+  ok(Number(await one(`SELECT count(*) FROM sync_runs WHERE status = 'running' AND id > $1`, [before])) === 0, 'B: kein Lauf dieses Tests haengt auf running');
+}
+
+if (stage === 'antwortfehler') {
+  // Review-Befund 2: fehlendes/null-Datenfeld nach erfolgreicher Seite ist KEIN Seitenende
+  await control([
+    { root: 'customer_documents', page: 2, kind: 'missing' },
+    { root: 'Receipt_Receipts', page: 2, kind: 'null' },
+    { root: 'project_matches', page: 2, kind: 'null' },
+  ]);
+  const v0 = await versions();
+  await syncProc('hourly').done;
+  const run = await lastRun();
+  const ar = await areaRuns(run.id);
+  console.log(JSON.stringify(summary(run.details)), (run.details.documents?.fehler ?? '').slice(0, 90));
+  for (const a of ['documents', 'receipts', 'projects']) {
+    ok(ar[a]?.status === 'error' && !ar[a].complete && !run.details[a].loeschabgleich, `${a}: fehlendes/null-Datenfeld → error, complete=false, kein Loeschabgleich`);
+    ok(/ohne gueltige Datenliste/.test(run.details[a]?.fehler ?? ''), `${a}: Fehlertext benennt die ungueltige Antwort`);
+  }
+  ok(ar.document_drafts?.status === 'error' && !ar.document_drafts.complete, 'document_drafts: error, complete=false');
+  ok(ar.wage_groups?.status === 'success' && ar.tracking_times?.status === 'success', 'uebrige Bereiche success');
+  ok(Number(await one(`SELECT count(*) FROM documents WHERE deleted_at IS NOT NULL`)) === 0, 'keine Loeschmarkierung');
+  ok((await versions()) === v0, 'keine zusaetzlichen Inhaltsversionen');
+
+  // echtes leeres Array auf Seite 2 = gueltiges Seitenende
+  await control([{ root: 'customer_documents', page: 2, kind: 'empty' }]);
+  await syncProc('hourly').done;
+  const run2 = await lastRun();
+  const ar2 = await areaRuns(run2.id);
+  const p = run2.details.documents?.loeschabgleich;
+  console.log('leeres Array:', JSON.stringify(summary(run2.details)), JSON.stringify({ kandidaten: p?.kandidaten, abgelehnt: p?.abgelehnt?.slice(0, 80) }));
+  ok(ar2.documents?.status === 'success' && ar2.documents.complete && ar2.documents.rows_fetched === 100, 'leeres Array: documents success, vollstaendig, 100 Datensaetze (Seitenende)');
+  ok(Boolean(p) && (p.markiert ?? 0) === 0, 'leeres Array: Loesch-Probelauf laeuft, markiert nichts');
+  ok(Number(await one(`SELECT count(*) FROM documents WHERE deleted_at IS NOT NULL`)) === 0, 'keine Loeschmarkierung');
+
+  // Wiederherstellung: normaler Lauf
+  await control();
+  await syncProc('hourly').done;
+  const run3 = await lastRun();
+  ok(run3.status === 'success', 'Folgelauf ohne Fehlerantworten: success');
+}
+
 console.log(`ERGEBNIS ${stage}: ${pass} bestanden, ${fail} fehlgeschlagen`);
 await db.end();
 process.exit(fail ? 1 : 0);

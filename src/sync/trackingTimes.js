@@ -35,7 +35,7 @@ export const MONTHS_BACK = { hourly: 2, nightly: 3, initial: 25, manual: 2 };
 
 export async function syncTrackingTimes(run, { slices }) {
   for (const { start, end } of slices) {
-    for await (const { rows } of heroPages((first, offset) => TRACKING_TIMES_QUERY(start, end, first, offset), (d) => d.tracking_times, { pageSize: 500 })) {
+    for await (const { rows } of heroPages((first, offset) => TRACKING_TIMES_QUERY(start, end, first, offset), (d) => d?.tracking_times, { pageSize: 500 })) {
       await run.writeTx(async (c) => {
         for (const t of rows) {
           await c.query(

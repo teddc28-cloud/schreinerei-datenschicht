@@ -15,6 +15,18 @@ import { shortError } from '../utils/errors.js';
  */
 
 const LEASE_SECONDS = Number(process.env.SYNC_LEASE_SECONDS ?? 1800); // 30 min wie in 010
+const CONN_RETRIES = Number(process.env.SYNC_CONN_RETRIES ?? 2); // Wiederholungen je Operation nach Verbindungsabbruch
+
+// Verbindungsfehler: Verbindung ist verloren, Operation kann mit neuer Verbindung wiederholt werden.
+// 57P01 admin_shutdown (pg_terminate_backend), 57P02/57P03, Klasse 08 = connection exception.
+const CONN_ERROR_CODES = /^(57P0[123]|08\d{3})$/;
+export function isConnectionError(err) {
+  return Boolean(err) && (
+    CONN_ERROR_CODES.test(err.code ?? '') ||
+    isTransient(err) ||
+    /not queryable|Connection terminated|terminating connection|server closed the connection|ECONNREFUSED|EPIPE|socket hang up/i.test(err.message ?? '')
+  );
+}
 const HOLDER = `${os.hostname()}:${process.pid}`;
 const CANDIDATE_LOG_LIMIT = 200;
 
@@ -51,27 +63,75 @@ export class AreaRun {
     this.keys = new Set(); // tatsaechlich geschriebene Schluessel (rows_fetched = eindeutige Datensaetze)
     this.pages = 0;
     this.finished = false;
+    this.broken = false;
+    this.reconnects = 0;
   }
 
+  /**
+   * Feste Verbindung holen. Jede ausgeliehene Verbindung bekommt einen EIGENEN error-Handler: Der Pool-Handler
+   * greift nur fuer ruhende Pool-Verbindungen. Ohne Handler beendet ein Abbruch waehrend der HERO-Abfrage
+   * (Verbindung ausgeliehen, aber gerade unbenutzt) den ganzen Node-Prozess.
+   */
   async connect() {
-    if (this.client) return;
-    this.client = await pool.connect();
+    if (this.client && !this.broken) return;
+    if (this.client) {
+      this.dropClient(true); // defekte Verbindung verwerfen, nicht in den Pool zurueckgeben
+      this.reconnects += 1;
+    }
+    const c = await pool.connect();
+    c.on('error', (err) => {
+      if (this.client === c) {
+        this.broken = true;
+        this.lastConnError = shortError(err);
+      }
+      // Fehler einer bereits verworfenen Verbindung: bewusst ignoriert
+    });
+    this.client = c;
+    this.broken = false;
+    try {
+      await c.query(`SELECT set_config('application_name', $1, false)`, [`ds-sync:${this.area}`]);
+    } catch (err) {
+      if (isConnectionError(err)) this.broken = true;
+      else throw err;
+    }
   }
 
   dropClient(broken = false) {
     if (!this.client) return;
-    try { this.client.release(broken ? true : undefined); } catch { /* ignoriert */ }
+    const c = this.client;
     this.client = null;
+    try { c.release(broken || this.broken ? true : undefined); } catch { /* ignoriert */ }
+    this.broken = false;
+  }
+
+  /**
+   * Fuehrt eine Operation auf der festen Verbindung aus. Bei Verbindungsabbruch wird die Verbindung verworfen
+   * und die Operation mit einer neuen Verbindung wiederholt (max. CONN_RETRIES). Die Bereichssperre haengt nicht
+   * an der Verbindung (Zeile in ds.sync_area_leases) und bleibt dabei gueltig.
+   */
+  async withConn(op) {
+    for (let attempt = 0; ; attempt++) {
+      await this.connect();
+      try {
+        return await op(this.client);
+      } catch (err) {
+        if ((isConnectionError(err) || this.broken) && attempt < CONN_RETRIES) {
+          this.dropClient(true);
+          this.reconnects += 1;
+          continue;
+        }
+        throw err;
+      }
+    }
   }
 
   async begin() {
-    await this.connect();
     try {
-      const { rows } = await this.client.query(
+      const { rows } = await this.withConn((c) => c.query(
         `SELECT area_run_id, lease_token
            FROM ds.begin_area_run($1, $2, $3, $4::date, $5::date, $6, make_interval(secs => $7))`,
         [this.runId, this.area, this.mode, this.windowFrom, this.windowTo, HOLDER, LEASE_SECONDS]
-      );
+      ));
       this.areaRunId = Number(rows[0].area_run_id);
       this.token = rows[0].lease_token;
       this.renewAt = Date.now() + (LEASE_SECONDS * 1000) / 2;
@@ -85,18 +145,18 @@ export class AreaRun {
   /** Verlaengert die Sperre, wenn die Haelfte der Laufzeit verbraucht ist. Wirft, wenn sie verloren ist. */
   async ensureLease() {
     if (Date.now() < this.renewAt) return;
-    await this.connect();
-    await this.client.query(`SELECT ds.renew_area_lease($1, $2, make_interval(secs => $3))`, [
+    await this.withConn((c) => c.query(`SELECT ds.renew_area_lease($1, $2, make_interval(secs => $3))`, [
       this.areaRunId,
       this.token,
       LEASE_SECONDS,
-    ]);
+    ]));
     this.renewAt = Date.now() + (LEASE_SECONDS * 1000) / 2;
   }
 
   /**
    * Kurze Schreibtransaktion mit Lauf-ID. `fn(client)` liefert die geschriebenen Schluessel zurueck.
-   * Bei abgerissener Verbindung genau ein Wiederholungsversuch mit neuer Verbindung (Upserts sind idempotent).
+   * Bei abgerissener Verbindung (auch waehrend der HERO-Abfrage davor) Wiederholung mit neuer Verbindung,
+   * max. CONN_RETRIES; die Upserts sind idempotent. Danach Fehler → Bereich wird als error abgeschlossen.
    */
   async writeTx(fn) {
     for (let attempt = 0; ; attempt++) {
@@ -112,9 +172,13 @@ export class AreaRun {
         this.pages += 1;
         return;
       } catch (err) {
-        try { await c.query('ROLLBACK'); } catch { /* Verbindung evtl. weg */ }
-        if (isTransient(err) && attempt === 0) {
-          this.dropClient(true);
+        if (!(isConnectionError(err) || this.broken)) {
+          try { await c.query('ROLLBACK'); } catch { /* ignoriert */ }
+          throw err;
+        }
+        this.dropClient(true); // Transaktion ist mit der Verbindung verloren, nichts committet
+        if (attempt < CONN_RETRIES) {
+          this.reconnects += 1;
           continue;
         }
         throw err;
@@ -123,15 +187,16 @@ export class AreaRun {
   }
 
   async finish(status, complete, errorText = null) {
-    await this.connect();
-    await this.client.query(`SELECT ds.finish_area_run($1, $2, $3, $4, $5, $6)`, [
-      this.areaRunId,
-      this.token,
-      status,
-      complete,
-      this.keys.size,
-      errorText ? shortError(errorText, 500) : null,
-    ]);
+    const args = [this.areaRunId, this.token, status, complete, this.keys.size, errorText ? shortError(errorText, 500) : null];
+    try {
+      await this.withConn((c) => c.query(`SELECT ds.finish_area_run($1, $2, $3, $4, $5, $6)`, args));
+    } catch (err) {
+      // Wiederholung nach Verbindungsabbruch, obwohl der erste Abschluss schon committet war: als erledigt werten,
+      // wenn genau dieser Abschluss in der DB steht.
+      if (!/bereits abgeschlossen/.test(err.message ?? '')) throw err;
+      const { rows } = await this.withConn((c) => c.query(`SELECT status, complete FROM ds.sync_area_runs WHERE id = $1`, [this.areaRunId]));
+      if (rows[0]?.status !== status || rows[0]?.complete !== (status === 'success' && Boolean(complete))) throw err;
+    }
     this.finished = true;
   }
 
@@ -145,7 +210,7 @@ export class AreaRun {
     try {
       await this.connect();
       c = this.client;
-      await c.query('BEGIN');
+      await c.query('BEGIN'); // keine Wiederholung: der Probelauf ist optional, Fehler werden nur protokolliert
       const { rows } = await c.query(
         `SELECT fetched, stamped, active, candidates, marked FROM ds.mark_missing_as_deleted($1, $2, false)`,
         [this.areaRunId, this.token]
@@ -187,8 +252,7 @@ export class AreaRun {
   async release() {
     try {
       if (this.areaRunId && this.token) {
-        await this.connect();
-        await this.client.query(`SELECT ds.release_area_lease($1, $2)`, [this.areaRunId, this.token]);
+        await this.withConn((c) => c.query(`SELECT ds.release_area_lease($1, $2)`, [this.areaRunId, this.token]));
       }
       return null;
     } catch (err) {
@@ -218,6 +282,7 @@ export async function startArea(opts) {
 export async function completeArea(run, result, { complete = false, error = null }, { deletionProbe = true } = {}) {
   result.seiten = run.pages;
   result.count = run.keys.size;
+  if (run.reconnects) result.neue_verbindungen = run.reconnects; // nach Verbindungsabbruch
   if (error) {
     result.status = 'error';
     result.fehler = shortError(error);

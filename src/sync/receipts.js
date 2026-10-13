@@ -3,7 +3,13 @@ import { RECEIPTS_QUERY } from '../hero/queries.js';
 import { safeJsonStringify } from '../utils/safeJson.js';
 
 export async function syncReceipts(run) {
-  const pick = (d) => d.Receipt_Receipts.edges.map((e) => e.node);
+  // fehlendes Feld → undefined → heroPages wirft (kein stilles Seitenende)
+  const pick = (d) => {
+    const edges = d?.Receipt_Receipts?.edges;
+    if (!Array.isArray(edges)) return edges;
+    if (edges.some((e) => !e?.node)) return null; // unvollstaendige Seite nie als kuerzere (letzte) Seite werten
+    return edges.map((e) => e.node);
+  };
   for await (const { rows, last } of heroPages(RECEIPTS_QUERY, pick, { pageSize: 200 })) {
     await run.writeTx(async (c) => {
       for (const r of rows) {
