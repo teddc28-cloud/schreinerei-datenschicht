@@ -14,7 +14,9 @@ Branch `dev/v3-datenschicht-sync`. **Nicht nach `main` mergen, bevor die Migrati
   - `documents` und `document_drafts` nutzen einen gemeinsamen HERO-Abruf, aber zwei Sperren und zwei Verbindungen.
 - **Feste Verbindung, kurze Transaktionen.**
   - Je Bereich `pool.connect()`, je Abrufseite eine Transaktion mit `set_config('ds.run_id', <sync_runs.id>, true)`.
-  - Jede ausgeliehene Verbindung hat einen eigenen `error`-Handler (der Pool-Handler gilt nur für ruhende Pool-Verbindungen). Ein Abbruch, auch während der HERO-Abfrage, beendet den Prozess nicht. Die defekte Verbindung wird verworfen (`release(true)`), die Operation läuft mit neuer Verbindung weiter (max. 2 Wiederholungen, `SYNC_CONN_RETRIES`). Danach wird der Bereich als `error` abgeschlossen.
+  - Jede ausgeliehene Verbindung hat einen eigenen `error`-Handler (der Pool-Handler gilt nur für ruhende Pool-Verbindungen). Er wird bei der Rückgabe wieder entfernt.
+  - Verbindungsaufbau und Operation liegen in derselben begrenzten Wiederholung (mit kurzer Pause).
+  - Bricht die Verbindung um ein `COMMIT` herum ab, ist der Ausgang unklar (eventuell schon committet). Die Wiederholung ist trotzdem sicher: idempotente Upserts, gleiche Lauf-ID, Versionen nur bei Inhaltsänderung, `rows_fetched` zählt eindeutige Schlüssel. Ein Abbruch, auch während der HERO-Abfrage, beendet den Prozess nicht. Die defekte Verbindung wird verworfen (`release(true)`), die Operation läuft mit neuer Verbindung weiter (max. 2 Wiederholungen, `SYNC_CONN_RETRIES`). Danach wird der Bereich als `error` abgeschlossen.
   - Verbindungen tragen `application_name = ds-sync:<bereich>` (sichtbar in `pg_stat_activity`).
 - **Strikte API-Antworten.** Nur ein echtes Array ist eine gültige Seite. Fehlt das Datenfeld oder ist es `null`, endet der Bereich mit `error` und `complete=false`, ohne Löschabgleich. Ein echtes leeres Array bleibt ein gültiges Seitenende.
 - **Bereichsisolation.**
@@ -75,10 +77,14 @@ Auf Railway muss **nichts** gesetzt werden.
   - `pflichtstempel`: `require_run_stamp` nur in der Testkopie
   - `verbindung`: Verbindungsabbruch während der HERO-Abfrage (Neuverbindung, Erfolg) und während jeder Schreibtransaktion (Wiederholungen erschöpft, Bereich `error`, Prozess läuft weiter)
   - `antwortfehler`: fehlendes bzw. `null`-Datenfeld nach erfolgreicher Seite (`error`, kein Löschabgleich) und echtes leeres Array (gültiges Seitenende)
+- `tests/sync/robustheit.test.mjs [laeufe]`: im Prozess injizierte Fehler gegen die Testkopie
+  - viele aufeinanderfolgende Läufe: Listener-Anzahl je Pool-Verbindung wächst nicht
+  - Verbindungsaufbau scheitert einmal (Erfolg) bzw. dauerhaft (Bereich `error`, Abschluss/Freigabe protokolliert, Sperre läuft ab, Folgelauf übernimmt)
+  - COMMIT wirkt, Bestätigung geht verloren, Wiederholung: keine zusätzlichen Versionen, rows_fetched = Stempel = Schlüssel
 - `tests/sync/dashboard_snapshot.mjs` + `diff_snapshots.mjs`: Dashboard-Kennzahlen zweier Code-Stände zum festen Stichtag vergleichen.
 - **Nie** gegen Produktion richten. `scenarios.mjs` verweigert Railway-URLs.
 
-Ergebnis am 13.10.2026 auf einer frisch wiederhergestellten Kopie des Backups vom 12.10. (18:15 UTC): **110/110 Szenario-Prüfungen (inkl. `verbindung` 16, `antwortfehler` 14) und 7/7 Funktionsprüfungen bestanden.**
+Ergebnis am 13.10.2026 auf einer frisch wiederhergestellten Kopie des Backups vom 12.10. (18:15 UTC): **112/112 Szenario-Prüfungen, 21/21 Robustheitsprüfungen (8 Läufe in einem Prozess) und 7/7 Funktionsprüfungen bestanden.** Gegenprobe mit dem vorherigen Stand von `area.js`: Die Listener wachsen um 3 pro Lauf, und ein gescheiterter Verbindungsaufbau beim Schreiben bricht den Bereich ab. Beides wird von den Tests erkannt.
 
 Hinweis aus dem Test: Die Produktion enthält historische `sync_runs` mit Status `running` aus September (abgebrochene Läufe des alten Codes). Prüfpunkt 0 betrachtet deshalb nur die letzten 3 Stunden.
 
@@ -91,7 +97,8 @@ Hinweis aus dem Test: Die Produktion enthält historische `sync_runs` mit Status
 4. **Beobachtung: mindestens 2 volle Stundenläufe des alten Codes** auf der migrierten DB (getestet: Stufe `altcode`). Danach `checks/0x0_check.sql` lesend. Diese Beobachtung gehört nicht in das 30-Minuten-Fenster von Schritt 2–3.
 
 ### Termin 2: Codewechsel (frühestens nach erfolgreicher Beobachtung)
-Ziel: Vor dem ersten neuen Lauf ist der alte Sync nachweislich beendet, und kein alter Prozess kann wieder starten. Ausführen zwischen xx:05 und xx:45, also nach dem Stundenlauf und vor dem nächsten (und nicht um 03:17 Uhr).
+Ziel: Vor dem ersten neuen Lauf ist der alte Sync nachweislich beendet, und kein alter Prozess kann wieder starten.
+**Maßgeblich dafür sind die Schritte 1–3 und Prüfpunkt A/B:** abgeschalteter Scheduler, genau ein aktives Deployment, kein Duplikat-Service, kein manueller Start. Der Stempel-Check in Prüfpunkt C ist nur eine **zusätzliche Kontrolle**, kein lückenloser Nachweis (Begründung dort). Ausführen zwischen xx:05 und xx:45, also nach dem Stundenlauf und vor dem nächsten (und nicht um 03:17 Uhr).
 
 1. **Prüfpunkt 0 – kein laufender Sync** (lesend):
    ```sql
@@ -111,7 +118,7 @@ Ziel: Vor dem ersten neuen Lauf ist der alte Sync nachweislich beendet, und kein
    - `ds.sync_area_state` alle `ok`
    - Lösch-Probelauf-Kandidaten plausibel (erwartet: `document_drafts` ersetzte Entwürfe, `projects` in HERO archivierte Projekte)
    - Dashboard: Offene Forderungen ohne stornierte Restbeträge
-   - **Kein ungestempelter Schreibzugriff seit T**: jede Zeile ohne Lauf-ID wäre ein noch laufender Altprozess.
+   - **Zusatzkontrolle: kein ungestempelter Schreibzugriff seit T.** Eine Zeile mit `synced_at > T` ohne Lauf-ID stammt sicher von altem Code. Umgekehrt beweist 0 Treffer aber **nicht**, dass kein Altprozess lief: Schreibt danach ein neuer Lauf dieselbe Zeile, überschreibt er `synced_at` und setzt einen Stempel, und die Spur des alten Zugriffs ist weg. Auch Zeilen, die der alte Code nur gelesen oder gar nicht berührt hat, hinterlassen nichts. Der Check fängt also nur Altzugriffe, die seit dem letzten neuen Lauf passiert sind.
    ```sql
    SELECT 'projects' t, count(*) FROM projects WHERE synced_at > :T AND last_seen_run_id IS NULL
    UNION ALL SELECT 'documents', count(*) FROM documents WHERE synced_at > :T AND last_seen_run_id IS NULL
@@ -120,11 +127,15 @@ Ziel: Vor dem ersten neuen Lauf ist der alte Sync nachweislich beendet, und kein
    UNION ALL SELECT 'tracking_times', count(*) FROM tracking_times WHERE synced_at > :T AND last_seen_run_id IS NULL
    UNION ALL SELECT 'wage_groups', count(*) FROM wage_groups WHERE synced_at > :T AND last_seen_run_id IS NULL;  -- überall 0
    ```
-   Diese Abfrage nach 24 h wiederholen.
+   Die Abfrage direkt **vor** jedem der nächsten Läufe wiederholen (z. B. xx:55), dann ist das Fenster seit dem letzten neuen Lauf erfasst. Ergänzend: Jeder Lauf des alten Codes legt einen `sync_runs`-Eintrag **ohne** Bereichsläufe an. Diese Spur wird nicht überschrieben (zweite Zusatzkontrolle):
+   ```sql
+   SELECT s.id, s.started_at FROM sync_runs s
+   WHERE s.started_at > :T AND NOT EXISTS (SELECT 1 FROM ds.sync_area_runs r WHERE r.run_id = s.id);  -- 0 Zeilen; sonst lief alter Code
+   ```
 - Den Sync **nie** manuell per Railway-Shell mit altem Code starten (`node src/sync/index.js`).
 
 ### Termin 3: Pflichtstempel (frühestens 24 h nach Termin 2)
-Voraussetzung: 24 h saubere Stunden- und Nachtläufe, der ungestempelt-Check aus Prüfpunkt C ist weiterhin überall 0.
+Voraussetzung: 24 h saubere Stunden- und Nachtläufe; die Zusatzkontrollen aus Prüfpunkt C (Stempel-Check vor den Läufen, keine `sync_runs` ohne Bereichsläufe seit T) waren durchgehend unauffällig. Erst der Pflichtstempel schließt Altcode-Schreibzugriffe technisch aus.
 ```sql
 UPDATE ds.sync_areas SET require_run_stamp = true WHERE source_system = 'hero' AND enabled;
 ```
@@ -137,7 +148,7 @@ Ab dann wird jeder Schreibzugriff eines eventuell doch gestarteten Altprozesses 
 |---|---|
 | Termin 2, Schritt 2 schlägt fehl | `SCHEDULER_ENABLED` entfernen → alter Code läuft wie vorher. |
 | Termin 2, nach Schritt 3/4 (neuer Code fehlerhaft) | Wieder ohne Überlappung: (1) `SCHEDULER_ENABLED=false` → neuer Code ohne Sync. (2) Revert-Commit auf `main` → Auto-Deploy alter Code, weiter ohne Sync. Prüfen: ein aktives Deployment, Log `Scheduler deaktiviert`, Prüfpunkt 0 = 0. (3) `SCHEDULER_ENABLED` entfernen → alter Code synct wieder (läuft auf migrierter DB, Pflichtstempel aus; getestet). |
-| Prüfpunkt C zeigt ungestempelte Zeilen | Ein Altprozess schreibt noch. Sofort in Railway alle Deployments beider Services prüfen und den alten stoppen bzw. entfernen. Folge: Die betroffenen Zeilen sind ohne Sperrprüfung geschrieben, der Inhalt ist aber HERO-Stand. Der nächste neue Lauf stempelt sie neu. Löschprobeläufe dieses Bereichs melden bis dahin „unplausibel“. |
+| Prüfpunkt C zeigt ungestempelte Zeilen oder `sync_runs` ohne Bereichsläufe | Ein Altprozess schreibt noch. Sofort in Railway alle Deployments beider Services prüfen und den alten stoppen bzw. entfernen. Folge: Die betroffenen Zeilen sind ohne Sperrprüfung geschrieben, der Inhalt ist aber HERO-Stand. Der nächste neue Lauf stempelt sie neu. Löschprobeläufe dieses Bereichs melden bis dahin „unplausibel“. |
 | Termin 3, Pflichtstempel an | **Zuerst** `UPDATE ds.sync_areas SET require_run_stamp = false;`, **dann** wie oben auf alten Code zurück. Sonst scheitert jeder Abruf des alten Codes (getestet). |
 | Migrationen zurücknehmen | Nur **nach** dem Code-Rücksetzen: der neue Code braucht `ds`. Danach `down/060 → 010` laut Migrations-README, vorher Backup. |
 | Notbremse ohne Rückbau | Trigger einzeln deaktivieren (Migrations-README Abschnitt 4). Der neue Sync läuft weiter, die Probeläufe melden „unplausibel“. |

@@ -61,6 +61,7 @@ if (stage === 'voll') {
   const ar = await areaRuns(run.id);
   console.log(`Laufzeit Vollsync (initial): ${r.ms} ms, sync_runs.status=${run.status}`, JSON.stringify(summary(run.details)));
   ok(run.status === 'success', 'Vollsync: sync_runs.status = success', run.error_message ?? '');
+  ok(Object.keys(ar).length === 6, 'Zusatzkontrolle Rollout: neuer Lauf hat 6 Bereichslaeufe', String(Object.keys(ar).length));
   for (const a of Object.keys(TABLES)) ok(ar[a]?.status === 'success' && ar[a]?.complete, `Bereich ${a}: success + complete`, `${ar[a]?.status}/${ar[a]?.complete}`);
   const st = await stamped(run.id);
   for (const a of Object.keys(TABLES)) ok(st[a] === ar[a]?.rows_fetched, `Bereich ${a}: gestempelt = rows_fetched`, `${st[a]} / ${ar[a]?.rows_fetched}`);
@@ -235,6 +236,8 @@ if (stage === 'altcode') {
   ok((await versions()) === v0, 'keine zusaetzlichen Inhaltsversionen durch alten Code');
   const unst = Number(await one(`SELECT count(*) FROM projects WHERE last_seen_run_id IS NULL`));
   ok(unst === Number(await one(`SELECT count(*) FROM projects`)), 'alter Code schreibt ungestempelt (last_seen_run_id NULL)', String(unst));
+  const ohneBereich = Number(await one(`SELECT count(*) FROM ds.sync_area_runs WHERE run_id = $1`, [run.id]));
+  ok(ohneBereich === 0, 'Zusatzkontrolle Rollout: Lauf des alten Codes hat keine Bereichslaeufe (erkennbar)', String(ohneBereich));
 }
 
 if (stage === 'verbindung') {

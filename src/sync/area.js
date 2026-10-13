@@ -24,7 +24,7 @@ export function isConnectionError(err) {
   return Boolean(err) && (
     CONN_ERROR_CODES.test(err.code ?? '') ||
     isTransient(err) ||
-    /not queryable|Connection terminated|terminating connection|server closed the connection|ECONNREFUSED|EPIPE|socket hang up/i.test(err.message ?? '')
+    /not queryable|Connection terminated|terminating connection|server closed the connection|ECONNREFUSED|EPIPE|socket hang up|timeout exceeded when trying to connect/i.test(err.message ?? '')
   );
 }
 const HOLDER = `${os.hostname()}:${process.pid}`;
@@ -71,6 +71,9 @@ export class AreaRun {
    * Feste Verbindung holen. Jede ausgeliehene Verbindung bekommt einen EIGENEN error-Handler: Der Pool-Handler
    * greift nur fuer ruhende Pool-Verbindungen. Ohne Handler beendet ein Abbruch waehrend der HERO-Abfrage
    * (Verbindung ausgeliehen, aber gerade unbenutzt) den ganzen Node-Prozess.
+   * Der Handler wird gespeichert und bei der Rueckgabe in den Pool wieder entfernt (keine wachsende Listener-Zahl
+   * auf wiederverwendeten Pool-Verbindungen). Verbindungsfehler beim Aufbau wirft connect() weiter; die
+   * Wiederholung uebernehmen withConn()/writeTx().
    */
   async connect() {
     if (this.client && !this.broken) return;
@@ -79,47 +82,67 @@ export class AreaRun {
       this.reconnects += 1;
     }
     const c = await pool.connect();
-    c.on('error', (err) => {
+    const onError = (err) => {
       if (this.client === c) {
         this.broken = true;
         this.lastConnError = shortError(err);
       }
-      // Fehler einer bereits verworfenen Verbindung: bewusst ignoriert
-    });
+    };
+    c.on('error', onError);
     this.client = c;
+    this.onClientError = onError;
     this.broken = false;
     try {
       await c.query(`SELECT set_config('application_name', $1, false)`, [`ds-sync:${this.area}`]);
     } catch (err) {
-      if (isConnectionError(err)) this.broken = true;
-      else throw err;
+      this.broken = true;
+      if (!isConnectionError(err)) {
+        this.dropClient(true);
+        throw err;
+      }
+      throw err; // Verbindungsfehler: Aufrufer wiederholt mit neuer Verbindung
     }
   }
 
   dropClient(broken = false) {
     if (!this.client) return;
     const c = this.client;
+    const destroy = broken || this.broken;
     this.client = null;
-    try { c.release(broken || this.broken ? true : undefined); } catch { /* ignoriert */ }
     this.broken = false;
+    if (this.onClientError) {
+      c.removeListener('error', this.onClientError);
+      this.onClientError = null;
+    }
+    // Eine verworfene Verbindung wird vom Pool beendet; Fehler beim Beenden duerfen den Prozess nicht stoppen.
+    // Der Pool verwendet sie nicht wieder, der Listener waechst also auf keiner Pool-Verbindung.
+    if (destroy) c.once('error', () => {});
+    try { c.release(destroy ? true : undefined); } catch { /* ignoriert */ }
+  }
+
+  async retryPause(attempt) {
+    await new Promise((r) => setTimeout(r, Math.min(250 * 2 ** attempt, 2000)));
   }
 
   /**
-   * Fuehrt eine Operation auf der festen Verbindung aus. Bei Verbindungsabbruch wird die Verbindung verworfen
-   * und die Operation mit einer neuen Verbindung wiederholt (max. CONN_RETRIES). Die Bereichssperre haengt nicht
-   * an der Verbindung (Zeile in ds.sync_area_leases) und bleibt dabei gueltig.
+   * Fuehrt eine Operation auf der festen Verbindung aus. Verbindungsaufbau UND Operation liegen in derselben
+   * begrenzten Fehlerbehandlung: Bei Verbindungsfehler wird die Verbindung verworfen und mit neuer Verbindung
+   * wiederholt (max. CONN_RETRIES). Die Bereichssperre haengt nicht an der Verbindung (Zeile in
+   * ds.sync_area_leases) und bleibt dabei gueltig.
    */
   async withConn(op) {
     for (let attempt = 0; ; attempt++) {
-      await this.connect();
       try {
+        await this.connect();
         return await op(this.client);
       } catch (err) {
         if ((isConnectionError(err) || this.broken) && attempt < CONN_RETRIES) {
           this.dropClient(true);
           this.reconnects += 1;
+          await this.retryPause(attempt);
           continue;
         }
+        if (isConnectionError(err) || this.broken) this.dropClient(true);
         throw err;
       }
     }
@@ -160,10 +183,11 @@ export class AreaRun {
    */
   async writeTx(fn) {
     for (let attempt = 0; ; attempt++) {
-      await this.ensureLease();
-      await this.connect();
-      const c = this.client;
+      let c = null;
       try {
+        await this.ensureLease();
+        await this.connect();
+        c = this.client;
         await c.query('BEGIN');
         await c.query(`SELECT set_config('ds.run_id', $1, true)`, [String(this.runId)]);
         const keys = await fn(c);
@@ -173,12 +197,17 @@ export class AreaRun {
         return;
       } catch (err) {
         if (!(isConnectionError(err) || this.broken)) {
-          try { await c.query('ROLLBACK'); } catch { /* ignoriert */ }
+          if (c) try { await c.query('ROLLBACK'); } catch { /* ignoriert */ }
           throw err;
         }
-        this.dropClient(true); // Transaktion ist mit der Verbindung verloren, nichts committet
+        // Ausgang UNKLAR: Abbruch vor dem COMMIT = Rollback; Abbruch nach gesendetem COMMIT kann bereits
+        // committet sein (Bestaetigung verloren). Die Wiederholung ist in beiden Faellen sicher: Upserts sind
+        // idempotent, die Lauf-ID ist dieselbe (gleicher Stempel), Versionen entstehen nur bei Inhaltsaenderung,
+        // und rows_fetched zaehlt eindeutige Schluessel (Set). Getestet: tests/sync/robustheit.test.mjs.
+        this.dropClient(true);
         if (attempt < CONN_RETRIES) {
           this.reconnects += 1;
+          await this.retryPause(attempt);
           continue;
         }
         throw err;
@@ -256,6 +285,14 @@ export class AreaRun {
       }
       return null;
     } catch (err) {
+      // Wiederholte Freigabe nach verlorener Bestaetigung: Sperre ist bereits frei → kein Fehler
+      if (/nicht \(mehr\) gehalten/.test(err.message ?? '')) {
+        try {
+          const { rows } = await this.withConn((c) => c.query(
+            `SELECT l.lease_token IS NULL AS frei FROM ds.sync_area_leases l WHERE l.area = $1`, [this.area]));
+          if (rows[0]?.frei && this.reconnects > 0) return null;
+        } catch { /* Originalfehler melden */ }
+      }
       return shortError(err);
     } finally {
       this.dropClient();
