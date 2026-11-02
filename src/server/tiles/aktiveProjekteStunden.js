@@ -16,7 +16,10 @@ import { PRODUKTIVE_KATEGORIEN } from './produktiveKategorien.js';
  */
 export async function getAktiveProjekteStunden(statusNamen = ['In Umsetzung']) {
   const { rows: laufendeProjekte } = await pool.query(
-    `SELECT id, display_id, name FROM projects WHERE status_name = ANY($1) AND deleted_at IS NULL`,
+    `SELECT id, display_id, name FROM projects
+     WHERE status_name = ANY($1) AND deleted_at IS NULL
+       AND coalesce(raw_json->>'project_type', 'unmanaged') <> 'copcontact'  -- Kontaktcontainer sind keine Projekte
+       AND coalesce(raw_json->>'is_deleted', 'false') <> 'true'              -- archiviert`,
     [statusNamen]
   );
   if (laufendeProjekte.length === 0) {
