@@ -1,10 +1,16 @@
 // Query-Bausteine fuer die Hero API v9.
 // Feldnamen wurden per Introspection gegen die echte API verifiziert (nicht geraten).
 
+// type: "all" liefert zusaetzlich archivierte Projekte (is_deleted = true, Status "Archiviert") und die
+// HERO-Kontaktcontainer (project_type "copcontact", Nummer KONT-..., ohne display_id), an denen Belege
+// direkt am Kontakt haengen. Ohne type fehlen beide (Analyse 28.10.2026: 169 unbekannte Projekt-IDs).
 export const PROJECT_MATCHES_QUERY = (first, offset) => `{
-  project_matches(first: ${first}, offset: ${offset}) {
+  project_matches(first: ${first}, offset: ${offset}, type: "all") {
     id
     display_id
+    project_nr
+    project_type
+    is_deleted
     name
     volume
     current_project_match_status_id

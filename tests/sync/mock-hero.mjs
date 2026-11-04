@@ -23,7 +23,13 @@ function parse(query) {
 
 function rowsFor(root, args) {
   switch (root) {
-    case 'project_matches': return data.projects;
+    case 'project_matches':
+      // Wie HERO: ohne type nur aktive Projekte (keine archivierten, keine Kontaktcontainer) und ohne die
+      // Felder, die erst die type:"all"-Abfrage anfordert. Fixtures ohne diese Felder bleiben unveraendert.
+      if (args.type === 'all') return data.projects;
+      return data.projects
+        .filter((p) => !p.is_deleted && (p.project_type ?? 'unmanaged') !== 'copcontact')
+        .map(({ project_nr, project_type, is_deleted, ...rest }) => rest);
     case 'customer_documents': return data.documents;
     case 'Receipt_Receipts': return data.receipts;
     case 'WageGroup_WageGroups': return data.wage_groups;

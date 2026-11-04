@@ -3,10 +3,11 @@ import { PROJECT_MATCHES_QUERY } from '../hero/queries.js';
 import { safeJsonStringify } from '../utils/safeJson.js';
 
 /**
- * Bereich projects. Hinweis (Analyse 12.10.2026): project_matches liefert ohne type-Argument nur
- * nicht geloeschte Projekte bestimmter Projekttypen. Archivierte/geloeschte (is_deleted) und Projekte
- * des Typs id 1 fehlen daher – sichtbar in ds.v_missing_projects. Abrufumfang bewusst unveraendert
- * (Erweiterung auf type: "all" aendert Dashboard-Mengen → eigene Entscheidung, siehe docs/V3-SYNC-UMSTELLUNG.md).
+ * Bereich projects. Abruf mit type: "all" (Entscheidung 10/2026): enthaelt auch archivierte Projekte
+ * (raw_json.is_deleted = true, Status "Archiviert") und HERO-Kontaktcontainer (raw_json.project_type =
+ * "copcontact", ohne Projektnummer). Beide werden gespeichert, damit Belege und Zeitbuchungen ihr Projekt
+ * finden und der Loeschabgleich nur echte Loeschungen meldet. Archivierte Projekte sind KEINE Loeschung
+ * (deleted_at bleibt NULL). Auswertungen filtern ausdruecklich auf echte, aktive Projekte (siehe tiles).
  */
 export async function syncProjects(run) {
   for await (const { rows, last } of heroPages(PROJECT_MATCHES_QUERY, (d) => d?.project_matches, { pageSize: 500 })) {
